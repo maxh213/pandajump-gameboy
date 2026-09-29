@@ -24,11 +24,10 @@
 #define MAX_FALL      768   /* vy is capped here (3 px/frame) */
 #define DEAD_HOP_VEL  448   /* the little hop when the panda dies */
 
-/* Measured with these values (tools: exact integer model of panda.c, and
-   the ROM itself in PyBoy): a jump rises for 30 frames to a 43 px apex and
-   lands 59 frames after take-off. A double jump pressed at the apex tops
-   out at 55 px (sprite top at y = 41, well below the top of the screen) and
-   lands after 77 frames. */
+/* Measured in the ROM (PyBoy) with these values: a jump rises for 30
+   frames to a 42.5 px apex and is in the air for 59 frames. A double jump
+   pressed at the apex tops out at 54 px (sprite top at y = 42, well below
+   the top of the screen) and stays up for 80 frames. */
 
 /* Hitbox: inclusive pixel offsets inside the 16x16 sprite. Smaller than the
    drawn panda so a graze doesn't kill. HIT_X1 - HIT_X0 must stay below 8 so
