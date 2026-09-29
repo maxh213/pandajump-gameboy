@@ -2,7 +2,7 @@
 
    Every frame: wait for VBlank, read the buttons, write the tiles queued
    last frame while the LCD is still in VBlank, update the sound, then run
-   the current state.
+   the current state from line 1 of the new frame.
    The state code only touches RAM (shadow OAM, the "next" scroll values,
    queued tiles), so what it does appears all at once on the next frame.
 
@@ -41,7 +41,8 @@ static uint8_t prompt_shown;
 
 #ifdef DEBUG_TIMING
 /* Lines of LCD time the frame's work took, counted from the start of
-   VBlank (line 144). Anything under 154 fits in the frame. */
+   VBlank (line 144). The logic has to end before the next VBlank, so
+   anything under 154 fits in the frame. */
 uint8_t debug_lines;
 uint8_t debug_lines_max;
 
@@ -219,6 +220,15 @@ void main(void) {
 
         pressed = joy & (uint8_t)~joy_prev;
         joy_prev = joy;
+
+        /* Run the game logic in the visible part of the frame, from line 1
+           (LY also reads 0 during line 153). This costs a few idle lines
+           but keeps each frame's RAM changes together within one emulator
+           frame, so headless tests see whole frames and a fixed input
+           latency. */
+        if (LCDC_REG & LCDCF_ON) {
+            while (LY_REG == 0 || LY_REG >= 144) {}
+        }
 
         switch (game_state) {
         case STATE_TITLE:  title_state();  break;
