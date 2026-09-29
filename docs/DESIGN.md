@@ -52,6 +52,11 @@ that depends on it.
 
 - LCDC bit 4 stays **0** (GBDK's default): BG/window tiles use `0x8800`
   addressing, so BG tile indices 0–255 are all usable.
+- Sprite tiles: panda at 0 (`S_PANDA_BASE`), dust puff at 64
+  (`S_FX_BASE`), and a copy of the dark font's A–Z at 96–121
+  (`S_TEXT_BASE`) for sprite text such as the title's `PRESS START` (the
+  world band scrolls under it, so it can't be BG text). OAM: 0–3 panda,
+  4 dust, 5–14 text, the rest hidden.
 - **Sprite tiles use indices 0–127 only** (`0x8000–0x87FF`), which BG never
   sees. BG tiles 128–255 share VRAM with sprite tiles 128–255, so sprites
   must never use 128+.
@@ -151,8 +156,10 @@ lines; the tests parse them.
   to the right, is generated and written to the map (rows 10–13 only).
 - Obstacles: a column is 2 tiles wide with 1 or 2 boxes (50/50). Once the
   score is above 10, one in three obstacles is a double column (two
-  columns side by side, same height). Obstacle starts are `SPACING` tiles
-  apart; the difficulty ramp raises the speed and shortens the spacing as
+  columns side by side, same height). After each obstacle the generator
+  leaves `SPACING - 2` empty tiles (plus a random 0–3), so single columns
+  start `SPACING` tiles apart and a double column is followed by
+  `SPACING + 2`; `src/config.h` derives the safe minimum from the physics; the difficulty ramp raises the speed and shortens the spacing as
   the score grows, down to limits that the physics can still clear.
 - `col_height[32]` mirrors the box height in pixels (0, 16 or 32) of each
   map column, so collision never reads VRAM: the hitbox is checked against
@@ -164,8 +171,13 @@ lines; the tests parse them.
   on the title screen.
 - Clouds live in the sky band's map and scroll at a fraction of the world
   speed; new clouds are written into sky-band columns off-screen, at a
-  random height (map rows 2–3 or 3–4) every few seconds. The band bobs
+  fixed height (map rows 3–4; rows 2–3 would let the downward bob clip the
+  cloud's top against the static HUD band) every few seconds. The band bobs
   gently with `cloud_bob`.
+
+Messages (`GAME OVER`, `SCORE` / `NEW BEST!`, `PAUSED`) are BG text in
+world rows 7–9, written only while the world is frozen. Row 6 stays plain
+sky because the bobbing sky band reads into it.
 
 ## States and controls
 
@@ -201,7 +213,20 @@ screen pixels), `panda_vy` (8.8, positive is down), `panda_on_ground`,
 `jumps_used`, `world_x` (`uint16_t`, whole pixels scrolled this run),
 `world_scx`, `col_height[32]`, `frame_count` (`uint8_t`, +1 per frame),
 `debug_invincible` (`uint8_t`, 0 in normal play; when a test sets it,
-collisions are ignored).
+collisions are ignored), `world_speed` (8.8 px/frame, shows the ramp).
+
+Timing that tests can rely on: a button press shows in RAM 2 frames after
+it starts (the game reads the joypad right after VBlank and runs its logic
+from line 1); each state change sets `game_state` last; BG text appears
+one frame after a state change; the title logo turns into sky over 4
+frames when a run starts.
+
+## Web player
+
+`web/` runs the ROM in binjgb. It keeps the 8 KiB cartridge RAM in
+`localStorage` under `pandajump.sram` (base64), plus `pandajump.palette`
+and `pandajump.sound`, and exposes a read-only `window.pandajump` (state,
+frames, ticks, joypad) for tests.
 
 ## Sound API (`src/sound.h`)
 
@@ -216,7 +241,12 @@ void sfx_start(void);       /* start a run / confirm */
 void sfx_pause(void);
 void music_play(uint8_t song);   /* MUSIC_TITLE or MUSIC_GAME */
 void music_stop(void);
+void music_pause(void);     /* silence, keeping the song's position */
+void music_resume(void);    /* carry on from where music_pause() stopped */
 ```
+
+`sfx_*()` only queue an effect; it starts on the next `sound_update()`. Call
+none of these from an interrupt handler.
 
 Sound effects use channels 1 and 4, so any music uses channels 2 and 3.
 
@@ -230,4 +260,4 @@ Sound effects use channels 1 and 4, so any music uses channels 2 and 3.
 | `src/sound.c`, `src/sound.h` | sound |
 | `web/*` | web player |
 | `tests/*`, `tools/rom_shot.py` | tests |
-| `.github/workflows/*`, `README.md` | release |
+| `ci/*` (copy to `.github/workflows/`), `README.md` | release |
