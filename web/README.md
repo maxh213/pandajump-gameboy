@@ -13,6 +13,7 @@ folder works on GitHub Pages or any other static host as it is.
 | `favicon.svg` | Pixel panda icon |
 | `vendor/` | binjgb's prebuilt `binjgb.js` and `binjgb.wasm` (MIT, see `vendor/README.md`) |
 | `pandajump.gb` | The ROM, copied here by `make web` |
+| `tests/smoke.js` | Browser smoke test (below) |
 
 ## Run it locally
 
@@ -57,6 +58,19 @@ Opening `index.html` straight from disk doesn't work: browsers won't let a
 `state` (`loading`, `running`, `paused` or `stopped`), `frames` (Game Boy
 frames shown), `ticks` (CPU ticks run) and `joypad` (buttons held: A 1, B 2,
 Select 4, Start 8, Right 16, Left 32, Up 64, Down 128).
+
+## Test
+
+`tests/smoke.js` serves this folder on a local port, opens it in headless
+Chromium and checks the game boots, runs at Game Boy speed, draws a sharp
+picture, takes keyboard and touch input, keeps its save across a reload and
+fits a phone screen. It needs Node 18+ and Playwright with Chromium
+(`npm install playwright && npx playwright install chromium`), but no network:
+
+```sh
+make web
+node web/tests/smoke.js
+```
 
 ## Credits
 
