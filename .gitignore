@@ -1,0 +1,8 @@
+/build/
+/tools/gbdk/
+__pycache__/
+.pytest_cache/
+*.gb.ram
+*.sav
+*.state
+/web/node_modules/
