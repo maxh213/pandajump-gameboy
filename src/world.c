@@ -198,9 +198,12 @@ void world_scroll(void) {
     world_x += world_step;
     world_scx = (uint8_t)world_x;
     if (gen_on) {
+        /* world_x wraps at 65536 px (about 12 minutes at full speed), so
+           tiles are counted modulo 8192 too; the world coordinates made
+           from them wrap the same way. */
         t = world_x >> 3;
         while (gen_tile != t) {
-            gen_tile++;
+            gen_tile = (gen_tile + 1) & 0x1FFF;
             gen_column();
         }
     }
