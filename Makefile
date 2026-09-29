@@ -32,7 +32,7 @@ CART_FLAGS := -Wm-yt0x1B -Wm-ya1 -Wm-yn"PANDAJUMP"
 CFLAGS     := -Wa-l -I$(RES) -Isrc
 LDFLAGS    := -Wl-m -Wl-j -Wm-yS $(CART_FLAGS)
 
-SRCS := $(wildcard src/*.c)
+SRCS := $(sort $(wildcard src/*.c))
 OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
 # Art: each PNG has its own png2asset options.

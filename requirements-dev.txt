@@ -1,0 +1,5 @@
+# Python tools for the art script, the headless tests and screenshots.
+pyboy==2.7.0
+pillow>=10
+numpy>=1.26
+pytest>=8

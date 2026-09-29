@@ -6,3 +6,4 @@ __pycache__/
 *.sav
 *.state
 /web/node_modules/
+/.claude/worktrees/
