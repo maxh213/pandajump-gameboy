@@ -5,9 +5,10 @@
    off whatever effect was playing on its channel.
 
    Call sound_init() once at startup and sound_update() once per frame,
-   from the main loop. The other calls only queue things up; the sound
-   starts on the next sound_update(), so calling them just before it in
-   the same frame gives no delay. Don't call any of these from an
+   from the main loop. sfx_*() only queue the effect: it starts on the
+   next sound_update(), so calling them before it in the same frame gives
+   no delay. A song starts one sound_update() later than that. music_stop()
+   and music_pause() go silent at once. Don't call any of these from an
    interrupt handler. */
 #ifndef SOUND_H
 #define SOUND_H
