@@ -54,5 +54,13 @@
 /* Sprite tiles (0x8000 bank, never 128 or above). */
 #define S_PANDA_BASE   0
 #define S_FX_BASE      64
+#define S_TEXT_BASE    96   /* 'A'..'Z' copied from the dark font (26 tiles) */
+
+/* Hardware sprite (OAM) slots. */
+#define OAM_PANDA      0    /* 4 sprites: 0..3 */
+#define OAM_FX         4
+#define OAM_TEXT       5    /* up to 10 sprites: 5..14 */
+#define OAM_TEXT_END   15
+#define OAM_USED       15   /* everything from here up stays hidden */
 
 #endif
