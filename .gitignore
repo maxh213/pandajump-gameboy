@@ -1,0 +1,23 @@
+# Build output and local tools
+/build/
+/play/
+/_site/
+/tools/gbdk/
+/.claude/worktrees/
+
+# Emulator saves and save states
+*.gb.ram
+*.sav
+*.state
+*.ss[0-9]
+
+# Python and Node
+__pycache__/
+.pytest_cache/
+/.venv/
+/venv/
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db

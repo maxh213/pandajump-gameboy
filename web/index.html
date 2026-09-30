@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PandaJump</title>
+  <meta name="description" content="PandaJump: an endless-runner Game Boy game. Jump the running panda over the boxes, right here in your browser, or download the ROM.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#e2f2f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1a1d" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <noscript><style>.overlay > .overlay-text { display: none; }</style></noscript>
+  <!-- binjgb (the emulator) first, then the player that drives it. -->
+  <script src="vendor/binjgb.js" defer></script>
+  <script src="player.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <h1><img src="favicon.svg" alt="" width="32" height="32"> PandaJump</h1>
+    <p>Jump the running panda over the boxes. A Game Boy game you can play right here.</p>
+  </header>
+
+  <main>
+    <!-- The handheld. player.js sizes the screen (--screen-w/--screen-h) to a
+         whole number of device pixels per Game Boy pixel. -->
+    <section class="console" id="console" aria-label="Game Boy">
+      <div class="bezel">
+        <div class="bezel-top" aria-hidden="true">
+          <span class="led"></span><span class="bezel-caption">Battery</span>
+        </div>
+        <div class="screen" id="screen">
+          <canvas id="lcd" width="160" height="144" role="img" aria-label="PandaJump game screen"></canvas>
+          <div class="overlay" id="overlay" aria-live="polite">
+            <p class="overlay-text">Loading&hellip;</p>
+            <noscript>
+              <p class="overlay-text">PandaJump needs JavaScript to run here.
+                You can still <a href="pandajump.gb" download>download the ROM</a>.</p>
+            </noscript>
+          </div>
+        </div>
+        <p class="brand" aria-hidden="true">Panda<b>Jump</b></p>
+      </div>
+
+      <!-- On-screen buttons. They are real buttons (so assistive tech can press
+           them) but stay out of the Tab order: the keyboard has its own keys. -->
+      <div class="dpad" role="group" aria-label="D-pad">
+        <button type="button" class="dpad-up" data-gb="up" tabindex="-1" aria-label="Up"></button>
+        <button type="button" class="dpad-left" data-gb="left" tabindex="-1" aria-label="Left"></button>
+        <button type="button" class="dpad-right" data-gb="right" tabindex="-1" aria-label="Right"></button>
+        <button type="button" class="dpad-down" data-gb="down" tabindex="-1" aria-label="Down"></button>
+      </div>
+      <div class="ab">
+        <button type="button" class="round-btn btn-b" data-gb="b" tabindex="-1" aria-label="B" data-key="X">B</button>
+        <button type="button" class="round-btn btn-a" data-gb="a" tabindex="-1" aria-label="A, jump" data-key="Z">A</button>
+      </div>
+      <div class="menu">
+        <button type="button" class="pill-btn btn-select" data-gb="select" tabindex="-1" aria-label="Select" data-key="C">Select</button>
+        <button type="button" class="pill-btn btn-start" data-gb="start" tabindex="-1" aria-label="Start" data-key="Enter">Start</button>
+      </div>
+    </section>
+
+    <section class="settings" aria-label="Player settings">
+      <fieldset class="palette-picker">
+        <legend>Screen colours</legend>
+        <div class="palette-options" id="palettes"></div>
+      </fieldset>
+      <div class="actions">
+        <button type="button" class="chip" id="sound" aria-pressed="true">
+          <svg class="icon icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="stroke" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+          <svg class="icon icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="stroke" d="M16.5 9.5l5 5m0-5l-5 5"/></svg>
+          Sound
+        </button>
+        <a class="chip" id="download" href="pandajump.gb" download="pandajump.gb">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path class="stroke" d="M12 4v11m-5-5l5 5 5-5M5 20h14"/></svg>
+          Download ROM
+        </a>
+      </div>
+      <p class="save-note" id="save-note" hidden></p>
+    </section>
+
+    <section class="info" aria-labelledby="how-title">
+      <h2 id="how-title">How to play</h2>
+      <ul class="rules">
+        <li>Press <kbd>Start</kbd> to begin a run.</li>
+        <li>Press <kbd>A</kbd> to jump over the boxes. Press it again in the air to double jump.</li>
+        <li>Every column of boxes you clear scores a point. Touch one and it&rsquo;s game over.</li>
+        <li><kbd>Start</kbd> pauses. Your best score is saved on the cartridge (here, in this browser).</li>
+      </ul>
+
+      <h3>Controls</h3>
+      <dl class="keys">
+        <dt>A (jump)</dt>
+        <dd><kbd>Z</kbd>, <kbd>Space</kbd>, <kbd>W</kbd> or <kbd>&uarr;</kbd>. On a phone, tap A or the screen.</dd>
+        <dt>Start</dt>
+        <dd><kbd>Enter</kbd></dd>
+        <dt>Select</dt>
+        <dd><kbd>C</kbd> or <kbd>Backspace</kbd>. On the title screen it turns the music off and on.</dd>
+        <dt>B</dt>
+        <dd><kbd>X</kbd></dd>
+        <dt>D-pad</dt>
+        <dd>Arrow keys</dd>
+        <dt>Gamepad</dt>
+        <dd>A, B, Start, Select, the D-pad and the left stick all work.</dd>
+        <dt>Sound</dt>
+        <dd><kbd>M</kbd> mutes and unmutes.</dd>
+      </dl>
+    </section>
+
+    <section class="info" aria-labelledby="about-title">
+      <h2 id="about-title">About</h2>
+      <p>PandaJump began in 2014 as a Flappy Bird&ndash;style browser game. This is
+        its remake for the original Game Boy: a real ROM written in C with GBDK-2020,
+        running here in an emulator. Download it to play in any Game Boy emulator,
+        or on the real thing with a flash cartridge.</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Emulation by <a href="https://github.com/binji/binjgb">binjgb</a> (MIT) by Ben Smith.
+      Made with <a href="https://github.com/gbdk-2020/gbdk-2020">GBDK-2020</a>.
+      <a href="https://github.com/maxh213/pandajump-gameboy">Source code</a>.</p>
+  </footer>
+</body>
+</html>
