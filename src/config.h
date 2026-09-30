@@ -165,7 +165,23 @@
 /* ---- Animation and timing ---------------------------------------------- */
 #define RUN_ANIM_STEP   1536 /* 8.8 px of travel per run frame: 11 fps at 1.125 px/frame */
 #define FX_FRAME_TIME   4    /* frames per dust puff frame */
-#define DEAD_DELAY      60   /* frames of ignored input after dying */
-#define BLINK_FRAMES    32   /* PRESS START is on/off for this many frames */
+
+/* ---- Text on the title and game-over screens ---------------------------
+   After a death the messages wait until the panda has sunk out of sight
+   (so its death hop can't cover them), then:
+       y 40  GAME OVER             sprites: the sky band's row 5, always plain sky
+       y 56  SCORE 12 / NEW BEST! 12   BG text, world map row 7
+       y 72  PRESS START           sprites, PROMPT_DELAY frames later
+   with a blank line between each. Start or A restarts only once PRESS
+   START shows, and only with a new press (a button held from the run
+   doesn't count). The title's PRESS START is at y 64 from its first frame.
+   Both blink: on for BLINK_ON frames of every BLINK_PERIOD. */
+#define TITLE_PROMPT_Y  64
+#define OVER_TEXT_Y     40
+#define OVER_SCORE_ROW  7
+#define OVER_PROMPT_Y   72
+#define PROMPT_DELAY    30   /* frames from the messages to PRESS START */
+#define BLINK_PERIOD    64   /* a power of 2 */
+#define BLINK_ON        44   /* about 0.7 s on, 0.3 s off */
 
 #endif

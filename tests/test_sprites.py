@@ -166,8 +166,8 @@ def test_sprite_tiles_and_limits(make_game, cfg):
                 used = -8 < y < 144 and -8 < x < 160
                 if i >= cfg.OAM_USED:
                     assert not used, f"OAM {i} is in use"
-                if cfg.OAM_TEXT <= i < cfg.OAM_TEXT_END and not text_allowed:
-                    assert not used, f"PRESS START sprite {i} left on screen"
+                if cfg.OAM_TEXT <= i < cfg.OAM_OVER_END and not text_allowed:
+                    assert not used, f"text sprite {i} left on screen"
 
     check(80, True)                   # title with PRESS START
     g.start_run(invincible=True)
@@ -178,9 +178,12 @@ def test_sprite_tiles_and_limits(make_game, cfg):
     check(80, False)                  # landing: dust puff
     g.write8("debug_invincible", 0)
     g.run_until(lambda g: g.state() == cfg.STATE_DEAD, 2000)
-    check(150, False)                 # death pose and fall; PRESS START is BG text here
+    check(180, True)                  # death pose and fall, GAME OVER, PRESS START
     assert any(cfg.S_FX_BASE <= t < cfg.S_TEXT_BASE for t in seen), "the dust puff never showed"
     assert any(t >= cfg.S_TEXT_BASE for t in seen), "PRESS START never showed"
+    g.tick(cfg.BLINK_PERIOD)
+    g.tap("start")
+    check(20, False)                  # the new run: no text sprites left
 
 
 def test_panda_sprite_at_panda_x_and_panda_y(make_game, cfg):

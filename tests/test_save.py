@@ -6,7 +6,7 @@ loading takes the good slot with the newest sequence number; a cartridge
 without a good slot reads 0 and is not written until the next new best."""
 import pytest
 
-from gb import SLOT_SIZE, dark_text, find_text, hud_hi_row, save_ram, sram_slot
+from gb import SLOT_SIZE, dark_text, find_text, hud_hi_row, save_ram, sprite_text, sram_slot
 
 BLANK = bytes([0xFF]) * SLOT_SIZE
 
@@ -14,6 +14,12 @@ BLANK = bytes([0xFF]) * SLOT_SIZE
 def slots(g):
     raw = bytes(g.sram(2 * SLOT_SIZE))
     return raw[:SLOT_SIZE], raw[SLOT_SIZE:]
+
+
+def messages(g, cfg):
+    """Wait for the game-over messages; the world band's scroll then."""
+    g.run_until(lambda g: sprite_text(g, cfg.OAM_OVER, cfg.OAM_OVER_END), 100, what="GAME OVER")
+    return g.u8("world_scx")
 
 
 def score_then_die(g, cfg, score):
@@ -39,10 +45,10 @@ def test_new_best_is_saved_in_contract_format(make_game, cfg):
     score_then_die(g, cfg, 3)
     assert g.u16("high_score") == 3
     assert slots(g) == (sram_slot(3, seq=1), BLANK)
-    scx = g.u8("world_scx")
     g.tick(1)
     assert g.win_row(0)[:20] == hud_hi_row(cfg, 3)
-    assert find_text(g, 8, dark_text(cfg, "NEW BEST! 3"), scx) is not None
+    scx = messages(g, cfg)
+    assert find_text(g, cfg.OVER_SCORE_ROW, dark_text(cfg, "NEW BEST! 3"), scx) is not None
 
 
 def test_high_score_survives_power_cycle(make_game, cfg):
@@ -70,9 +76,8 @@ def test_worse_or_equal_run_keeps_the_best(make_game, cfg, final):
     score_then_die(g, cfg, final)
     assert g.u16("high_score") == 5
     assert g.sram(0x2000) == list(ram), "a run that isn't a new best wrote to the save RAM"
-    scx = g.u8("world_scx")
-    g.tick(1)
-    assert find_text(g, 8, dark_text(cfg, f"SCORE {final}"), scx) is not None
+    scx = messages(g, cfg)
+    assert find_text(g, cfg.OVER_SCORE_ROW, dark_text(cfg, f"SCORE {final}"), scx) is not None
     assert g.win_row(0)[:20] == hud_hi_row(cfg, 5)
 
 

@@ -23,6 +23,7 @@ uint8_t player_feet(void);        /* screen y of the hitbox's bottom row */
 void player_run(void);            /* advance the run cycle with world_speed */
 void player_die(void);            /* death pose and hop */
 void player_dead_fall(void);      /* one frame of the fall after dying */
+uint8_t player_sunk(void);        /* 1 once the dead panda is out of sight */
 void player_draw(void);
 
 void fx_start(uint8_t y);         /* dust puff under the panda, top at y */

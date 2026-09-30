@@ -4,7 +4,7 @@ starting a run, and the RNG seeding (docs/DESIGN.md "States and controls",
 import numpy as np
 import pytest
 
-from gb import SKY, bg_picture, hud_hi_row, record_world, render_band
+from gb import SKY, bg_picture, hud_hi_row, record_world, render_band, sprite_text
 from model import Scroll, WorldMap
 
 
@@ -38,13 +38,13 @@ def test_title_draws_the_logo(game, cfg):
 
 def test_title_press_start_sprites(game, cfg):
     """PRESS START is sprite text (OAM 5..14) using the copy of the font at
-    S_TEXT_BASE; it blinks every BLINK_FRAMES frames."""
+    S_TEXT_BASE, centred at TITLE_PROMPT_Y; it blinks."""
     def prompt():
         return [(y, x, t) for (y, x, t, a) in game.oam()[cfg.OAM_TEXT:cfg.OAM_TEXT_END]
                 if 0 <= y < 144 and 0 <= x < 160]
 
     seen_on, seen_off = None, False
-    for _ in range(3 * cfg.BLINK_FRAMES):
+    for _ in range(3 * cfg.BLINK_PERIOD):
         game.tick()
         p = prompt()
         if p:
@@ -56,6 +56,18 @@ def test_title_press_start_sprites(game, cfg):
     letters = [c for c in "PRESS START" if c != " "]
     assert [t for (_, _, t) in sorted(seen_on, key=lambda s: s[1])] == \
         [cfg.S_TEXT_BASE + ord(c) - ord("A") for c in letters]
+    assert sprite_text(game, cfg.OAM_TEXT, cfg.OAM_TEXT_END) in (None, ("PRESS START", 36, cfg.TITLE_PROMPT_Y))
+
+
+def test_press_start_is_up_on_the_first_title_frame(make_game, cfg):
+    """The call to action is there from the title's first frame (it used to
+    start in the blink's off half)."""
+    g = make_game(boot=False)
+    g.run_until(lambda g: g.u8("frame_count") != 0, 400, what="the main loop")
+    assert sprite_text(g, cfg.OAM_TEXT, cfg.OAM_TEXT_END) == ("PRESS START", 36, cfg.TITLE_PROMPT_Y)
+    g.tick(2, render=True)
+    y = cfg.TITLE_PROMPT_Y
+    assert (g.shades()[y:y + 8, 36:124] == 3).sum() > 50, "PRESS START not on screen"
 
 
 def test_blank_save_is_left_alone(make_game):
@@ -236,12 +248,15 @@ def test_button_held_from_power_on_is_not_a_press(make_game, cfg, button):
     assert g.state() == cfg.STATE_PLAY
 
 
-def test_press_start_blinks_every_blink_frames(game, cfg):
-    shown = []
-    for _ in range(6 * cfg.BLINK_FRAMES):
-        game.tick()
-        y, x, t, a = game.oam()[cfg.OAM_TEXT]
-        shown.append(0 <= y < 144)
-    changes = [i for i in range(1, len(shown)) if shown[i] != shown[i - 1]]
-    assert len(changes) >= 4
-    assert all(b - a == cfg.BLINK_FRAMES for a, b in zip(changes, changes[1:])), changes
+def test_press_start_blinks_mostly_on(make_game, cfg):
+    """On for BLINK_ON frames of every BLINK_PERIOD (about 70%), counted
+    from the title's first frame."""
+    g = make_game(boot=False)
+    g.run_until(lambda g: g.u8("frame_count") != 0, 400, what="the main loop")
+    shown = [sprite_text(g, cfg.OAM_TEXT, cfg.OAM_TEXT_END) is not None]
+    for _ in range(3 * cfg.BLINK_PERIOD - 1):
+        g.tick()
+        shown.append(sprite_text(g, cfg.OAM_TEXT, cfg.OAM_TEXT_END) is not None)
+    on, off = cfg.BLINK_ON, cfg.BLINK_PERIOD - cfg.BLINK_ON
+    assert shown == ([True] * on + [False] * off) * 3
+    assert 0.6 <= on / cfg.BLINK_PERIOD <= 0.8

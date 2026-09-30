@@ -59,9 +59,10 @@ that depends on it.
   addressing, so BG tile indices 0–255 are all usable.
 - Sprite tiles: panda at 0 (`S_PANDA_BASE`), dust puff at 64
   (`S_FX_BASE`), and a copy of the dark font's A–Z at 96–121
-  (`S_TEXT_BASE`) for sprite text such as the title's `PRESS START` (the
-  world band scrolls under it, so it can't be BG text). OAM: 0–3 panda,
-  4 dust, 5–14 text, the rest hidden.
+  (`S_TEXT_BASE`) for sprite text: `PRESS START` (the world band scrolls
+  under the title's, so it can't be BG text) and `GAME OVER` (in the sky
+  band, which drifts and bobs). OAM: 0–3 panda, 4 dust, 5–14 `PRESS START`
+  (`OAM_TEXT`), 15–22 `GAME OVER` (`OAM_OVER`), 23 on (`OAM_USED`) hidden.
 - **Sprite tiles use indices 0–127 only** (`0x8000–0x87FF`), which BG never
   sees. BG tiles 128–255 share VRAM with sprite tiles 128–255, so sprites
   must never use 128+.
@@ -219,21 +220,42 @@ lines; the tests parse them.
   cloud's top against the static HUD band) every few seconds. The band bobs
   gently with `cloud_bob`.
 
-Messages (`GAME OVER`, `SCORE` / `NEW BEST!`, `PAUSED`) are BG text in
+Messages (`SCORE` / `NEW BEST!`, `PAUSED`; one at a time) are BG text in
 world rows 7–9, written only while the world is frozen. Row 6 stays plain
 sky because the bobbing sky band reads into it.
+
+The game-over screen (constants in `src/config.h`), with a blank line
+between each line of text:
+
+| y | Text | How |
+|---|------|-----|
+| 40 (`OVER_TEXT_Y`) | `GAME OVER` | sprites, in the sky band's map row 5, which is always plain sky (clouds use rows 3–4) |
+| 56 (row `OVER_SCORE_ROW` 7) | `SCORE 12` or `NEW BEST! 12` | BG text, centred to the nearest column |
+| 72 (`OVER_PROMPT_Y`) | `PRESS START` | sprites, blinking |
+
+`GAME OVER` and the score appear together on the frame the dead panda has
+sunk out of sight (its death hop would cover them before that), 43–54
+frames after the death depending on its height. `PRESS START` follows
+`PROMPT_DELAY` (30) frames later. `PRESS START` on the title is at y 64
+(`TITLE_PROMPT_Y`) and is there from the title's first frame. Both blink
+relative to when they appeared: on for `BLINK_ON` (44) frames of every
+`BLINK_PERIOD` (64).
 
 ## States and controls
 
 `game_state`: `STATE_TITLE` 0, `STATE_PLAY` 1, `STATE_DEAD` 2,
 `STATE_PAUSED` 3 (defined in `src/config.h`).
 
-- Title: logo, running panda, `PRESS START`, high score. Start or A begins.
+- Title: logo, running panda, `PRESS START`, high score. Start or A begins
+  (Select switches the music off and on).
 - Play: A jumps / double jumps. Start pauses (`STATE_PAUSED`, shows
   `PAUSED`, the music holds its place with `music_pause()`); Start again
   resumes (`music_resume()`, unless the music was switched off).
-- Dead: death pose and fall, `GAME OVER`, score, `NEW BEST!` when it is.
-  After a short delay Start or A starts a new run.
+- Dead: death pose and fall, then `GAME OVER` and the score (`NEW BEST!`
+  when it is), then `PRESS START`. From the frame `PRESS START` appears,
+  a press of Start or A starts a new run. Only a new press counts: a
+  button held down from the run (or pressed earlier) must be released and
+  pressed again, so mashing or holding A can't skip the score.
 
 ## Save RAM
 
@@ -280,10 +302,12 @@ collisions are ignored), `world_speed` (8.8 px/frame, shows the ramp).
 Timing that tests can rely on: a button press shows in RAM 2 frames after
 it starts (the game reads the joypad right after VBlank and runs its logic
 from line 1), except that a kept press acts on the landing frame; each
-state change sets `game_state` last; BG text appears one frame after a
-state change; the title logo turns into sky over 4 frames when a run
-starts (while the sky band shows plain sky); the panda is drawn standing
-on the first frame of every run.
+state change sets `game_state` last; BG text queued by a frame's logic is
+in VRAM after the next VBlank; the game-over messages come on the frame
+the panda has sunk and `PRESS START` `PROMPT_DELAY` frames after that
+(the same frame that first accepts a restart); the title logo turns into
+sky over 4 frames when a run starts (while the sky band shows plain sky);
+the panda is drawn standing on the first frame of every run.
 
 ## Web player
 

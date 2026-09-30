@@ -137,6 +137,10 @@ void player_dead_fall(void) {
     if (panda_y >= SUNK_Y) hidden = 1;
 }
 
+uint8_t player_sunk(void) {
+    return hidden;
+}
+
 void player_draw(void) {
     uint8_t frame;
     uint8_t prop = 0;

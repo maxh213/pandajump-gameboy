@@ -5,7 +5,7 @@ import io
 
 import pytest
 
-from gb import dark_text, find_text, record_world, render_band
+from gb import dark_text, find_text, record_world, render_band, sprite_text
 from model import AutoPlayer, Physics, WorldMap
 
 
@@ -39,31 +39,90 @@ def test_no_input_dies_at_first_obstacle(game, cfg):
     assert game.u16("score") == 0
 
 
-def test_dead_state_shows_game_over_and_score(game, cfg):
-    game.start_run()
-    die_without_input(game)
-    scx = game.u8("world_scx")
-    game.tick(1)   # BG text appears one frame after the state change
-    for row, text in ((7, "GAME OVER"), (8, "SCORE 0")):
-        x = find_text(game, row, dark_text(cfg, text), scx)
-        assert x is not None, f"{text!r} not in BG row {row}"
-        centre = x + 4 * len(text)
-        assert abs(centre - 80) <= 4, f"{text!r} is not centred (starts at x={x})"
+def frames_to_sink(cfg, y):
+    """Dead frames until the panda, dying at panda_y = y, has sunk out of
+    sight (the death hop, then GRAVITY/MAX_FALL down to GROUND_Y << 8)."""
+    vy, k = -cfg.DEAD_HOP_VEL, 0
+    while y < cfg.GROUND_Y << 8:
+        vy = min(vy + cfg.GRAVITY, cfg.MAX_FALL)
+        y = max(y + vy, 0)
+        k += 1
+    return k
 
 
-def test_press_start_appears_after_the_delay(game, cfg):
+def panda_on_screen(g, cfg):
+    return any(-8 < y < 144 for (y, x, t, a) in g.oam()[cfg.OAM_PANDA:cfg.OAM_PANDA + 4])
+
+
+def air_death(g, cfg):
+    """Run invincibly to a 2-box column, then jump into its side (take-off
+    when it is 12 px from the hitbox), the death the panda's hop used to
+    carry over the text. Returns once dead."""
+    hx0, hx1 = cfg.PANDA_X + cfg.HIT_X0, cfg.PANDA_X + cfg.HIT_X1
+    g.start_run(invincible=True)
+    wmap, x = record_world(g, 0, WorldMap())
+    while True:
+        ahead = [o for o in wmap.obstacles(complete_only=False) if o.right_edge > x + hx0]
+        if ahead and ahead[0].height == 32 and ahead[0].start * 8 - (x + hx1) in range(13, 16):
+            break
+        wmap, x = record_world(g, 1, wmap)
+        assert x < 30000
+    g.write8("debug_invincible", 0)
+    g.tap("a")
+    die_without_input(g)
+    assert g.s16("panda_y") < (cfg.GROUND_Y - 16) << 8, "meant to die in the air"
+
+
+@pytest.mark.parametrize("where", ["ground", "air"])
+def test_messages_wait_until_the_panda_has_sunk(make_game, cfg, where):
+    """GAME OVER (sprites at OVER_TEXT_Y) and the score (BG row
+    OVER_SCORE_ROW) appear on the frame the dead panda has sunk out of
+    sight, never while it is still on screen, centred, a blank line apart."""
+    g = make_game()
+    if where == "ground":
+        g.start_run()
+        die_without_input(g)
+    else:
+        air_death(g, cfg)
+    k = frames_to_sink(cfg, g.s16("panda_y"))
+    scx = g.u8("world_scx")
+    score = g.u16("score")                # a fresh cartridge: any points are a new best
+    score_text = dark_text(cfg, f"NEW BEST! {score}" if score else "SCORE 0")
+    for n in range(1, k):
+        g.tick()
+        assert panda_on_screen(g, cfg) or n == k
+        assert sprite_text(g, cfg.OAM_OVER, cfg.OAM_OVER_END) is None, f"GAME OVER {n} frames after dying"
+        assert find_text(g, cfg.OVER_SCORE_ROW, score_text, scx) is None, f"score {n} frames after dying"
+    g.tick()
+    assert not panda_on_screen(g, cfg)
+    text, x, y = sprite_text(g, cfg.OAM_OVER, cfg.OAM_OVER_END)
+    assert (text, y) == ("GAME OVER", cfg.OVER_TEXT_Y)
+    assert x + 4 * len(text) == 80, "GAME OVER is not centred"
+    x = find_text(g, cfg.OVER_SCORE_ROW, score_text, scx)
+    assert x is not None, "the score should be in the same frame's VBlank writes"
+    assert abs(x + 4 * len(score_text) - 80) <= 4, "the score is not centred"
+    assert cfg.OVER_SCORE_ROW * 8 - (cfg.OVER_TEXT_Y + 8) >= 8, "no blank line under GAME OVER"
+    assert cfg.OVER_PROMPT_Y - (cfg.OVER_SCORE_ROW * 8 + 8) >= 8, "no blank line under the score"
+    assert cfg.OVER_TEXT_Y >= 40 and cfg.OVER_PROMPT_Y + 8 <= 80, "text over clouds or boxes"
+
+
+def test_press_start_comes_prompt_delay_frames_later_and_blinks(game, cfg):
     game.start_run()
     die_without_input(game)
-    scx = game.u8("world_scx")
-    want = dark_text(cfg, "PRESS START")
-    for _ in range(cfg.DEAD_DELAY):
+    game.run_until(lambda g: sprite_text(g, cfg.OAM_OVER, cfg.OAM_OVER_END), 100, what="GAME OVER")
+    for n in range(1, cfg.PROMPT_DELAY):
         game.tick()
-        assert find_text(game, 9, want, scx) is None
-    seen = False
-    for _ in range(2 * cfg.BLINK_FRAMES + 2):
+        assert sprite_text(game, cfg.OAM_TEXT, cfg.OAM_TEXT_END) is None, f"PRESS START {n} frames early"
+    shown = []
+    for _ in range(3 * cfg.BLINK_PERIOD):
         game.tick()
-        seen |= find_text(game, 9, want, scx) is not None
-    assert seen
+        p = sprite_text(game, cfg.OAM_TEXT, cfg.OAM_TEXT_END)
+        if p:
+            assert p == ("PRESS START", 36, cfg.OVER_PROMPT_Y)
+        shown.append(p is not None)
+    on, off = cfg.BLINK_ON, cfg.BLINK_PERIOD - cfg.BLINK_ON
+    assert shown == ([True] * on + [False] * off) * 3, "PRESS START should blink from when it appears"
+    assert sprite_text(game, cfg.OAM_OVER, cfg.OAM_OVER_END)[0] == "GAME OVER"
 
 
 def test_death_pose_falls_off_screen(game, cfg):
@@ -88,24 +147,52 @@ def register_press_at(g, button, n):
     g.tick()
 
 
+def prompt_frame(g, cfg):
+    """Frames after the death frame until the one that shows PRESS START."""
+    return frames_to_sink(cfg, g.s16("panda_y")) + cfg.PROMPT_DELAY
+
+
 @pytest.mark.parametrize("button", ["start", "a"])
-def test_input_ignored_for_dead_delay(game, cfg, button):
+def test_input_ignored_until_press_start_shows(game, cfg, button):
     game.start_run()
     die_without_input(game)
-    # presses seen by frames 2, 4, ... DEAD_DELAY after the death frame
+    last = prompt_frame(game, cfg) - 1
+    # presses seen by frames 2, 4, ... up to the frame before the prompt
     n = 0
-    while n + 2 <= cfg.DEAD_DELAY:
+    while n + 2 <= last:
         register_press_at(game, button, 2)
         n += 2
         assert game.state() == cfg.STATE_DEAD, f"a press {n} frames after dying restarted"
-    assert n == cfg.DEAD_DELAY
+    if n < last:
+        register_press_at(game, button, last - n)
+        assert game.state() == cfg.STATE_DEAD, "a press the frame before PRESS START restarted"
+    assert sprite_text(game, cfg.OAM_TEXT, cfg.OAM_TEXT_END) is None
 
 
 @pytest.mark.parametrize("button", ["start", "a"])
-def test_first_press_after_dead_delay_restarts(game, cfg, button):
+def test_press_on_the_prompt_frame_restarts(game, cfg, button):
+    """Input counts from the very frame PRESS START appears."""
     game.start_run()
     die_without_input(game)
-    register_press_at(game, button, cfg.DEAD_DELAY + 1)
+    register_press_at(game, button, prompt_frame(game, cfg))
+    assert game.state() == cfg.STATE_PLAY
+
+
+@pytest.mark.parametrize("button", ["a", "start"])
+def test_button_held_from_the_run_does_not_restart(game, cfg, button):
+    """Holding the button through the death screen never restarts (only a
+    new press does): mashing or holding A to jump when the panda died can't
+    skip the score."""
+    game.start_run()
+    die_without_input(game)
+    game.hold(button)
+    game.tick(prompt_frame(game, cfg) + cfg.BLINK_PERIOD + 10)
+    assert sprite_text(game, cfg.OAM_TEXT, cfg.OAM_TEXT_END), "PRESS START should be up"
+    assert game.state() == cfg.STATE_DEAD
+    game.release(button)
+    game.tick()
+    assert game.state() == cfg.STATE_DEAD
+    game.tap(button)
     assert game.state() == cfg.STATE_PLAY
 
 
@@ -113,7 +200,7 @@ def test_restart_is_a_fresh_run(game, cfg):
     game.start_run()
     die_without_input(game)
     old_x = game.u16("world_x")
-    game.tick(cfg.DEAD_DELAY + 5)
+    game.tick(prompt_frame(game, cfg) + 5)
     assert game.u16("world_x") == old_x, "the world should stand still while dead"
     game.tap("start")
     assert game.state() == cfg.STATE_PLAY
@@ -244,10 +331,13 @@ def test_death_hop_and_fall_follow_the_physics(game, cfg):
 
 
 def test_restart_frames_render_clean(make_game, cfg):
-    """Restarting clears the old boxes and messages in the VBlank(s) after
-    the press. With a busy map (6+ box columns) the first frames of the new
-    run must already show exactly the new map at the new scroll (no stale
-    boxes or text), HUD band included."""
+    """Restarting clears the old boxes and messages in the VBlank after the
+    press. With a busy map (6+ box columns) the first frames of the new run
+    must already show exactly the new map at the new scroll (no stale boxes
+    or text), HUD band included, and that VBlank's tile work must be done
+    early in the frame (the message row is at line 56, the boxes from line
+    80): hooks on world_vram (entered when the text is done) and
+    sound_update (entered when the boxes are done) read LY."""
     import numpy as np
     from gb import HUD, WORLD, bg_picture
     hx0, hx1 = cfg.PANDA_X + cfg.HIT_X0, cfg.PANDA_X + cfg.HIT_X1
@@ -263,8 +353,12 @@ def test_restart_frames_render_clean(make_game, cfg):
     g.write8("debug_invincible", 0)
     g.tick()
     assert g.state() == cfg.STATE_DEAD
-    g.tick(cfg.DEAD_DELAY + 5, render=True)
+    g.tick(prompt_frame(g, cfg) + 5, render=True)
     ground = g.shades()[112:136].copy()
+    calls = []
+    for name in ("world_start_run", "world_vram", "sound_update"):
+        _bank, addr = g.pb.symbol_lookup("_" + name)
+        g.pb.hook_register(0, addr, lambda n: calls.append((n, g.pb.memory[0xFF44])), name)
     g.hold("start")
     g.tick(1, render=True)
     g.release("start")
@@ -292,3 +386,8 @@ def test_restart_frames_render_clean(make_game, cfg):
         assert np.array_equal(sh[WORLD][:, keep], world[:, keep]), f"frame {i + 1} of the new run"
         assert np.array_equal(sh[HUD], render_band(g, range(0, 16), 0, 0, pic))
         assert (sh[48:112][:, keep] == 0).all(), "rows 6-13 should be empty sky right after a restart"
+    start = [name for name, _ in calls].index("world_start_run")
+    job = dict(calls[start + 1:start + 3])   # the next VBlank's, in order
+    assert set(job) == {"world_vram", "sound_update"}, calls
+    for name, ly in job.items():
+        assert ly >= 144 or ly < 40, f"the restart VBlank's tile work still running at line {ly} ({name})"

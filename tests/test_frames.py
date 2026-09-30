@@ -64,12 +64,12 @@ def session(g, cfg, step, press):
     while g.state() == cfg.STATE_PLAY:
         step()
     assert g.u16("high_score") == 45
-    step(cfg.DEAD_DELAY + 40)
+    step(200)                          # the messages, then PRESS START
     press("a")
     assert g.state() == cfg.STATE_PLAY
     while g.state() == cfg.STATE_PLAY:
         step()
-    step(cfg.DEAD_DELAY + 5)
+    step(200)
     press("start")
     step(200)
 

@@ -322,6 +322,27 @@ def ram_image(block: bytes, fill: int = 0) -> bytes:
 
 
 # ---- text as tiles (src/tiles.h fonts) -------------------------------------
+def sprite_text(g: GB, first: int, end: int):
+    """The sprite text in OAM first..end-1 (docs/DESIGN.md: letters are
+    tiles S_TEXT_BASE + 0..25, 8 px apart, one row) as (text, left x, y),
+    with a space for each 8 px gap, or None if none of it is on screen."""
+    cfg = load_config()
+    sprites = sorted((x, y, t) for (y, x, t, a) in g.oam()[first:end] if -8 < y < 144 and -8 < x < 168)
+    if not sprites:
+        return None
+    ys = {y for _, y, _ in sprites}
+    assert len(ys) == 1, f"sprite text on more than one line: {sprites}"
+    text, x0 = "", sprites[0][0]
+    for i, (x, y, t) in enumerate(sprites):
+        assert 0 <= t - cfg.S_TEXT_BASE < 26, f"sprite tile {t} is not a letter"
+        if i:
+            gap = x - sprites[i - 1][0]
+            assert gap % 8 == 0 and gap >= 8, f"letters {gap} px apart"
+            text += " " * (gap // 8 - 1)
+        text += chr(ord("A") + t - cfg.S_TEXT_BASE)
+    return text, x0, ys.pop()
+
+
 def dark_text(cfg, text: str) -> list[int]:
     """Tiles of `text` in the dark font (space is T_SKY)."""
     special = {" ": cfg.T_SKY, "!": cfg.T_FONT_BANG, "-": cfg.T_FONT_DASH, ":": cfg.T_FONT_COLON,

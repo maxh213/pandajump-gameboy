@@ -189,19 +189,31 @@ def title_scene(tiles, logo, panda, t):
 
 
 def game_over_scene(tiles, panda, fx, t):
-    """The end of a run: text in both fonts, the dead pose over a box and a
-    dust puff where the panda last touched the ground."""
+    """The end of a run as src/main.c and src/hud.c draw it, once the dead
+    panda has sunk out of sight: GAME OVER in sprite text at y = 40 (the sky
+    band's plain bottom row, under the clouds), the score as BG text in map
+    row 7 and PRESS START in sprite text at y = 72, each centred with a
+    blank line between them, over the boxes the run ended at. (The panda
+    and fx sheets are unused: nothing of the panda is left on screen.)"""
     c = Canvas()
     for tx, ch in enumerate(text_tiles(t, "17")):
         c.tile(tiles, ch, 1 + tx, 1)
-    for row, text in ((4, "GAME OVER"), (6, "SCORE 17"), (8, "NEW BEST!")):
-        for tx, ch in enumerate(text_tiles(t, text)):
-            c.tile(tiles, ch, (20 - len(text)) // 2 + tx, row)
-    box(c, tiles, t, 6, 12)
+    cloud(c, tiles, t, 5, 3, yoff=-1)
+    cloud(c, tiles, t, 16, 3, yoff=-1, small=True)
+    for text, y in (("GAME OVER", 40), ("PRESS START", 72)):
+        x = (160 - len(text) * 8) // 2
+        for ch, tile in zip(text, text_tiles(t, text)):
+            if ch != " ":
+                c.sprite_tile(tiles, tile, x, y)
+            x += 8
+    text = "NEW BEST! 17"
+    for tx, ch in enumerate(text_tiles(t, text)):
+        c.tile(tiles, ch, (84 - len(text) * 4) // 8 + tx, 7)
+    box(c, tiles, t, 5, 10, variant=True)  # the 2-box column it ran into
+    box(c, tiles, t, 5, 12)
+    box(c, tiles, t, 18, 12)
     ground(c, tiles, t)
     window_hud(c, tiles, t, "HI 0017")
-    c.sprite(panda, 9, 16, 16, PANDA_X + 8, GROUND_Y - 34)
-    c.sprite(fx, 2, 8, 8, PANDA_X - 8, GROUND_Y - 8)
     return c
 
 
