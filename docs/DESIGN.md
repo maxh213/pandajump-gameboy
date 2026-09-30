@@ -370,4 +370,4 @@ Sound effects use channels 1 and 4, so any music uses channels 2 and 3.
 | `src/sound.c`, `src/sound.h` | sound |
 | `web/*` | web player |
 | `tests/*`, `tools/rom_shot.py` | tests |
-| `ci/*` (copy to `.github/workflows/`), `README.md` | release |
+| `.github/workflows/*`, `README.md` | release |
