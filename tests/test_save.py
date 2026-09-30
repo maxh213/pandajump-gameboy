@@ -4,9 +4,10 @@ sequence number, the score little-endian, checksum ~(sum of bytes 0-5)
 and a 0. A save writes the slot that doesn't hold the newest good copy;
 loading takes the good slot with the newest sequence number; a cartridge
 without a good slot reads 0 and is not written until the next new best."""
+import numpy as np
 import pytest
 
-from gb import SLOT_SIZE, dark_text, find_text, hud_hi_row, save_ram, sprite_text, sram_slot
+from gb import WINDOW, SLOT_SIZE, dark_text, find_text, hud_hi_row, save_ram, sprite_text, sram_slot
 
 BLANK = bytes([0xFF]) * SLOT_SIZE
 
@@ -40,15 +41,39 @@ def test_slot_format(cfg):
 
 
 def test_new_best_is_saved_in_contract_format(make_game, cfg):
-    """A blank cartridge: the first new best goes to slot 0 with sequence 1."""
+    """A blank cartridge: the first new best goes to slot 0 with sequence 1
+    on the frame of the death."""
     g = make_game(ram=save_ram())
     score_then_die(g, cfg, 3)
     assert g.u16("high_score") == 3
     assert slots(g) == (sram_slot(3, seq=1), BLANK)
-    g.tick(1)
-    assert g.win_row(0)[:20] == hud_hi_row(cfg, 3)
     scx = messages(g, cfg)
     assert find_text(g, cfg.OVER_SCORE_ROW, dark_text(cfg, "NEW BEST! 3"), scx) is not None
+    g.tick(1)
+    assert g.win_row(0)[:20] == hud_hi_row(cfg, 3)
+
+
+def test_hi_changes_with_the_new_best_message(make_game, cfg):
+    """The window's HI keeps the old best while the dead panda falls and
+    changes on the screen frame that shows NEW BEST!, not before it."""
+    g = make_game(ram=save_ram(sram_slot(2)))
+    g.tick(2, render=True)
+    old = g.shades()[WINDOW].copy()
+    score_then_die(g, cfg, 3)
+    msg = slice(cfg.OVER_SCORE_ROW * 8, cfg.OVER_SCORE_ROW * 8 + 8)   # nothing else reaches it
+    g.tick(2, render=True)
+    shown = []
+    for n in range(100):
+        sh = g.shades()
+        text = bool((sh[msg] != 0).any())
+        new_hi = not np.array_equal(sh[WINDOW], old)
+        assert text == new_hi, f"{n + 2} frames after the death: NEW BEST! shown {text}, new HI shown {new_hi}"
+        shown.append(text)
+        if shown[-3:] == [True] * 3:
+            break
+        g.tick(1, render=True)
+    assert shown[-3:] == [True] * 3 and shown.count(False) > 30, shown
+    assert g.win_row(0)[:20] == hud_hi_row(cfg, 3)
 
 
 def test_high_score_survives_power_cycle(make_game, cfg):

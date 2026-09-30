@@ -215,7 +215,8 @@ lines; the tests parse them.
 - Score: +1 when an obstacle's right edge passes the left edge of the
   panda's hitbox, `PANDA_X + HIT_X0` on screen (from then on it can't be
   hit; a single or double column counts once). High score is updated and
-  saved when the run ends.
+  saved when the run ends; the window's `HI` shows the new value from the
+  frame `NEW BEST!` appears.
 - RNG: `rand()`/`initrand()`, seeded from `DIV` on the first button press
   on the title screen, then stirred (one `rand()` per frame) while the
   title stays up, so a run depends on when Start came too. A button held
@@ -266,10 +267,11 @@ relative to when they appeared: on for `BLINK_ON` (44) frames of every
   `PAUSED`, the music holds its place with `music_pause()`); Start again
   resumes (`music_resume()`, unless the music was switched off).
 - Dead: death pose and fall, then `GAME OVER` and the score (`NEW BEST!`
-  when it is), then `PRESS START`. From the frame `PRESS START` appears,
-  a press of Start or A starts a new run. Only a new press counts: a
-  button held down from the run (or pressed earlier) must be released and
-  pressed again, so mashing or holding A can't skip the score.
+  when it is, and the window's `HI` changes with it), then `PRESS START`.
+  From the frame `PRESS START` appears, a press of Start or A starts a new
+  run. Only a new press counts: a button held down from the run (or
+  pressed earlier) must be released and pressed again, so mashing or
+  holding A can't skip the score.
 
 ## Save RAM
 
@@ -317,11 +319,14 @@ Timing that tests can rely on: a button press shows in RAM 2 frames after
 it starts (the game reads the joypad right after VBlank and runs its logic
 from line 1), except that a kept press acts on the landing frame; each
 state change sets `game_state` last; BG text queued by a frame's logic is
-in VRAM after the next VBlank; the game-over messages come on the frame
-the panda has sunk and `PRESS START` `PROMPT_DELAY` frames after that
-(the same frame that first accepts a restart); the title logo turns into
-sky over 4 frames when a run starts (while the sky band shows plain sky);
-the panda is drawn standing on the first frame of every run.
+in VRAM after the next VBlank (on a new best the window's `HI`, queued
+with `NEW BEST!`, can finish a few lines into the frame after it, well
+before line 136 where it is drawn, so on screen the two appear
+together); the game-over messages come on the frame the panda has sunk
+and `PRESS START` `PROMPT_DELAY` frames after that (the same frame that
+first accepts a restart); the title logo turns into sky over 4 frames
+when a run starts (while the sky band shows plain sky); the panda is
+drawn standing on the first frame of every run.
 
 ## Web player
 

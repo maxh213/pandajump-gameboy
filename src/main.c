@@ -108,8 +108,7 @@ static void die(void) {
     new_best = 0;
     if (score > high_score) {
         high_score = score;
-        save_store(high_score);
-        hud_high(high_score);
+        save_store(high_score);   /* saved at once; the window's HI waits for NEW BEST! */
         new_best = 1;
     }
     game_state = STATE_DEAD;
@@ -203,6 +202,7 @@ static void dead_state(void) {
             /* the score first: GAME OVER and PRESS START line up with it */
             hud_message_num(OVER_SCORE_ROW, new_best ? "NEW BEST! " : "SCORE ", score);
             hud_game_over(1);
+            if (new_best) hud_high(high_score);   /* the window's HI changes with NEW BEST! */
             dead_timer = 0;
             dead_phase = DEAD_TEXT;
         }
