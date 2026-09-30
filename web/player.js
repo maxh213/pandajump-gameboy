@@ -187,16 +187,17 @@
   }
 
   // Whether a focused page control needs this key itself: Space and Enter
-  // press buttons and follow links, Space and the arrows work radio buttons.
-  // Every other key, and every key while nothing on the page has focus,
-  // goes to the game.
+  // press buttons, Enter follows links (Space on a link would only scroll
+  // the page), Space and the arrows work radio buttons. Every other key, and
+  // every key while nothing on the page has focus, goes to the game.
   function keyIsForControl(event) {
     const el = event.target;
     if (!(el instanceof Element)) return false;
     if (el.closest('#console') && !el.closest('.overlay')) return false;
     if (el.isContentEditable) return true;
     const code = event.code;
-    const activates = code === 'Space' || code === 'Enter' || code === 'NumpadEnter';
+    const enter = code === 'Enter' || code === 'NumpadEnter';
+    const activates = enter || code === 'Space';
     switch (el.tagName) {
       case 'INPUT':
         if (el.type === 'radio') return code === 'Space' || code.startsWith('Arrow');
@@ -206,9 +207,10 @@
       case 'SELECT':
         return true;
       case 'BUTTON':
-      case 'A':
       case 'SUMMARY':
         return activates;
+      case 'A':
+        return enter;
       default:
         return false;
     }
@@ -829,7 +831,11 @@
       if (event.target.closest('.overlay button, .overlay a')) return;
       const el = event.target.closest('.dpad') || event.target.closest('[data-gb], .screen');
       if (!el) return;
-      event.preventDefault(); // keeps focus where it was, and no text selection
+      event.preventDefault(); // no text selection, and the button doesn't take focus
+      // Playing hands the keys back to the game: a page control that still
+      // has focus (reached with Tab) would otherwise keep Space and Enter.
+      const focused = document.activeElement;
+      if (focused && focused !== document.body && !this.device.contains(focused)) focused.blur();
       this.lastPointerTime = performance.now();
       if (this.resumeByInput()) return;
       if (this.state === 'stopped') return;
