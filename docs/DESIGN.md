@@ -207,16 +207,17 @@ lines; the tests parse them.
   the columns under its left and right edges. (Right after a restart the
   10 map columns the generator reaches first may still show the last
   run's boxes; they are rewritten before they scroll into view.)
-- Score: +1 when an obstacle's right edge passes the panda's left edge
-  (single or double column counts once). High score is updated and saved
+- Score: +1 when an obstacle's right edge passes the left edge of the
+  panda's hitbox, `PANDA_X + HIT_X0` on screen (from then on it can't be
+  hit; a single or double column counts once). High score is updated and saved
   when the run ends.
 - RNG: `rand()`/`initrand()`, seeded from `DIV` on the first button press
   on the title screen, then stirred (one `rand()` per frame) while the
   title stays up, so a run depends on when Start came too. A button held
   since power-on is not a press until it is released and pressed again.
 - Clouds live in the sky band's map and scroll at a fraction of the world
-  speed; new clouds are written into sky-band columns off-screen, at a
-  fixed height (map rows 3–4; rows 2–3 would let the downward bob clip the
+  speed; new clouds (the big 32×16 one or the small 24×16 one, at random)
+  are written into sky-band columns off-screen, at a fixed height (map rows 3–4; rows 2–3 would let the downward bob clip the
   cloud's top against the static HUD band) every few seconds. The band bobs
   gently with `cloud_bob`.
 

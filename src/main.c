@@ -153,12 +153,12 @@ static void play_state(void) {
             sfx_jump();
         } else if (jump == DOUBLE_JUMPED) {
             sfx_double_jump();
-            fx_start((uint8_t)(panda_y >> 8) + 12);
+            fx_start(PANDA_X + 4, (uint8_t)(panda_y >> 8) + 12);   /* under the feet */
         }
     }
     jump = player_physics();
     if (jump) {                   /* landed */
-        fx_start(GROUND_Y - 8);
+        fx_start(PANDA_X - 4, GROUND_Y - 8);   /* at the heel, not hidden behind the legs */
         if (jump == JUMPED) sfx_jump();   /* a kept press took off again */
     }
     world_scroll();

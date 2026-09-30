@@ -26,7 +26,7 @@ void player_dead_fall(void);      /* one frame of the fall after dying */
 uint8_t player_sunk(void);        /* 1 once the dead panda is out of sight */
 void player_draw(void);
 
-void fx_start(uint8_t y);         /* dust puff under the panda, top at y */
+void fx_start(uint8_t x, uint8_t y); /* dust puff, top-left at screen x, y */
 void fx_update(uint8_t drift);    /* animate; drift left with the ground */
 
 #endif

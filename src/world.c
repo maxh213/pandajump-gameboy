@@ -92,21 +92,26 @@ static uint8_t clear_n;
 static const uint8_t empty_column[4] = { T_SKY, T_SKY, T_SKY, T_SKY };
 
 /* What replaces the title logo (map columns 1-18, rows 2-5) when a run
-   starts: sky with two clouds, at columns 3-6 and 13-16 of rows 3-4
-   (CLOUD_ROW). All 72 tiles don't fit in one VBlank, so it goes one row
-   per frame over 4 frames, while the sky band shows plain sky (vbl_isr). */
+   starts: sky with a big cloud at columns 3-6 and a small one at 13-15 of
+   rows 3-4 (CLOUD_ROW). All 72 tiles don't fit in one VBlank, so it goes
+   one row per frame over 4 frames, while the sky band shows plain sky
+   (vbl_isr). */
 #define S_  T_SKY
 #define CT  T_CLOUD_TOP
 #define CB  T_CLOUD_BOT
+#define ST  T_CLOUD2_TOP
+#define SB  T_CLOUD2_BOT
 static const uint8_t run_sky[18 * 4] = {
     S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_,
-    S_, S_, CT, CT + 1, CT + 2, CT + 3, S_, S_, S_, S_, S_, S_, CT, CT + 1, CT + 2, CT + 3, S_, S_,
-    S_, S_, CB, CB + 1, CB + 2, CB + 3, S_, S_, S_, S_, S_, S_, CB, CB + 1, CB + 2, CB + 3, S_, S_,
+    S_, S_, CT, CT + 1, CT + 2, CT + 3, S_, S_, S_, S_, S_, S_, ST, ST + 1, ST + 2, S_, S_, S_,
+    S_, S_, CB, CB + 1, CB + 2, CB + 3, S_, S_, S_, S_, S_, S_, SB, SB + 1, SB + 2, S_, S_, S_,
     S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_, S_
 };
 #undef S_
 #undef CT
 #undef CB
+#undef ST
+#undef SB
 static const uint8_t *logo_src;      /* next row of run_sky to write */
 
 /* Sky in map rows 10-13 of a column: a leaner set_bkg_tiles(c, 10, 1, 4),
@@ -276,15 +281,18 @@ void world_ramp(void) {
 /* ---- Sky band: clouds ----------------------------------------------------
    The sky scrolls at a quarter of the world speed. Like the boxes, a column
    is written just off-screen right each time the sky crosses a tile, either
-   empty or one quarter of a 32x16 cloud.
+   empty or one column of a cloud: the big 32x16 one or the small 24x16
+   one, picked at random for each cloud so the sky doesn't look like
+   wallpaper.
 
    Clouds sit at map rows 3-4 (CLOUD_ROW). The bob raises the band's
    content by up to 4 px (SCY 0-4), which would cut the top off a cloud at
    rows 2-3 against the static HUD band above; rows 3-4 stay whole at every
-   bob height. */
+   bob height. Row 5 stays plain sky: GAME OVER is drawn there. */
 static uint16_t sky_pos;          /* 8.8 sky scroll position */
 static uint8_t sky_tile;          /* sky_scx >> 3 for the last column made */
 static uint8_t cloud_cols;        /* columns left of the current cloud */
+static uint8_t cloud_width;       /* 4: the big cloud, 3: the small one */
 static uint8_t cloud_gap;         /* empty columns before the next cloud */
 static uint8_t bob_timer;
 static uint8_t bob_phase;
@@ -305,14 +313,20 @@ static void sky_column(void) {
         if (cloud_gap) {
             cloud_gap--;
         } else {
-            cloud_cols = 4;
+            cloud_width = (rand() & 1) ? 4 : 3;
+            cloud_cols = cloud_width;
             cloud_gap = CLOUD_GAP_MIN + (rand() & CLOUD_GAP_RAND);
         }
     }
     if (cloud_cols) {
-        i = 4 - cloud_cols;
-        sky_tiles[CLOUD_ROW - 2] = T_CLOUD_TOP + i;
-        sky_tiles[CLOUD_ROW - 1] = T_CLOUD_BOT + i;
+        i = cloud_width - cloud_cols;
+        if (cloud_width == 4) {
+            sky_tiles[CLOUD_ROW - 2] = T_CLOUD_TOP + i;
+            sky_tiles[CLOUD_ROW - 1] = T_CLOUD_BOT + i;
+        } else {
+            sky_tiles[CLOUD_ROW - 2] = T_CLOUD2_TOP + i;
+            sky_tiles[CLOUD_ROW - 1] = T_CLOUD2_BOT + i;
+        }
         cloud_cols--;
     }
     sky_col = (sky_tile + 21) & 31;

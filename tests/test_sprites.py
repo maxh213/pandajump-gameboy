@@ -130,11 +130,17 @@ def test_dust_puff_on_double_jump_and_landing(make_game, cfg):
     assert y0 + 8 <= shown[0][0] <= y0 + 16, "the puff starts under the panda"
     assert cfg.PANDA_X <= shown[0][1] <= cfg.PANDA_X + 8
     assert puffs[-1] is None, "the puff should be gone after its 4 frames"
-    # landing
-    g.run_until(lambda g: g.u8("panda_on_ground"), 200)
+    # landing: the puff starts at the heel, where it isn't behind the legs
+    g.run_until(lambda g: g.u8("panda_on_ground"), 200, render=True)
     landing = fx_sprite(g, cfg)
     assert landing is not None and landing[2] in fx_tiles, "no dust puff on landing"
     assert landing[0] == cfg.GROUND_Y - 8
+    # made at PANDA_X - 4, and already moved with the ground that frame
+    assert landing[1] == cfg.PANDA_X - 4 - g.u8("world_step")
+    g.tick(1, render=True)                # the landing frame on screen
+    y = cfg.GROUND_Y - 8
+    assert (g.shades()[y:y + 8, cfg.PANDA_X - 4:cfg.PANDA_X] != 0).sum() >= 3, \
+        "the landing puff's first frame is not visible left of the panda"
     xs = []
     for _ in range(8):
         g.tick()

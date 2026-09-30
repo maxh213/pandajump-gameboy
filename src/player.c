@@ -175,10 +175,10 @@ static uint8_t fx_tick;
 static uint8_t fx_x;
 static uint8_t fx_y;
 
-void fx_start(uint8_t y) {
+void fx_start(uint8_t x, uint8_t y) {
     fx_frame = 0;
     fx_tick = 0;
-    fx_x = PANDA_X + 4;           /* centred under the 16 px panda */
+    fx_x = x;
     fx_y = y;
 }
 

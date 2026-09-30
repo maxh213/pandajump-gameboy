@@ -194,8 +194,9 @@ def test_screen_matches_vram_render(make_game, cfg):
 
 
 def test_clouds_keep_coming(make_game, cfg):
-    """New clouds are written into the sky band's map (rows 3-4 only,
-    whole 4-tile clouds) as it scrolls, and rows 2 and 5 stay sky.
+    """New clouds are written into the sky band's map (rows 3-4 only, whole
+    clouds: the big 4-tile one or the small 3-tile one) as it scrolls, both
+    shapes turn up, and rows 2 and 5 stay sky.
 
     A column written in a VBlank that runs long can still be half written
     when a tick ends (it is off-screen and done early in the next frame),
@@ -203,7 +204,11 @@ def test_clouds_keep_coming(make_game, cfg):
     checked."""
     g = make_game()
     g.start_run(invincible=True)
-    tops = {cfg.T_CLOUD_TOP + i for i in range(4)}
+    shapes = {}                        # top tile -> (shape, index, bottom tile, width)
+    for i in range(4):
+        shapes[cfg.T_CLOUD_TOP + i] = ("big", i, cfg.T_CLOUD_BOT + i, 4)
+    for i in range(3):
+        shapes[cfg.T_CLOUD2_TOP + i] = ("small", i, cfg.T_CLOUD2_BOT + i, 3)
     seen = set()
     sky_pos = 0          # the sky band's 8.8 scroll, as world_clouds() advances it
     speed = g.u16("world_speed")
@@ -229,17 +234,21 @@ def test_clouds_keep_coming(make_game, cfg):
             if t == cfg.T_SKY:
                 assert b == cfg.T_SKY, f"cloud bottom without top at column {c}"
                 continue
-            assert t in tops, f"unexpected tile {t} in the cloud row"
-            i = t - cfg.T_CLOUD_TOP
-            assert b == cfg.T_CLOUD_BOT + i
+            assert t in shapes, f"unexpected tile {t} in the cloud row"
+            shape, i, bottom, width = shapes[t]
+            assert b == bottom, f"{shape} cloud column {i} has the wrong bottom tile"
             # inside the window cloud columns are in order: a cloud is only
             # cut at the window's ends (scrolled off, or still being written)
             k = window.index(c)
             if k > 0 and i > 0:
                 assert r3[window[k - 1]] == t - 1, f"broken cloud at column {c}: {r3}"
-            if k < 21 and i < 3 and window[k + 1] in stable:
-                assert r3[window[k + 1]] == t + 1, f"broken cloud at column {c}: {r3}"
+            if k > 0 and i == 0:
+                assert r3[window[k - 1]] == cfg.T_SKY, f"clouds run together at column {c}: {r3}"
+            if k < 21 and window[k + 1] in stable:
+                want = t + 1 if i < width - 1 else cfg.T_SKY
+                assert r3[window[k + 1]] == want, f"broken cloud at column {c}: {r3}"
             if i == 0:
-                seen.add(frame // 60 * 1000 + c)
-    starts = {s % 1000 for s in seen}
+                seen.add((shape, frame // 60 * 1000 + c))
+    starts = {(shape, s % 1000) for shape, s in seen}
     assert len(starts) >= 6, f"clouds seen at map columns {sorted(starts)} only"
+    assert {shape for shape, _ in starts} == {"big", "small"}, "only one cloud shape"
