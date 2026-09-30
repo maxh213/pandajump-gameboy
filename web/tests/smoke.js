@@ -13,7 +13,9 @@
  *     and Space on a focused link doesn't scroll the page;
  *   - sound plays, loud enough and never above full scale;
  *   - tabs opened together all keep running, a new best in one stops
- *     another, and the best score survives a reload (a real game over);
+ *     another, a tab waiting in the background (not started yet) neither
+ *     stops nor loses that best, and the best score survives a reload (a
+ *     real game over);
  *   - a missing ROM shows a message;
  *   - phones: touch reaches the game, and the whole handheld fits on
  *     screen from 320 x 568 to 844 x 390, with no sideways scrolling;
@@ -159,13 +161,32 @@ function pageHooks() {
   };
 }
 
-async function openPlayer(context, url, problems, wait = true) {
+// Runs in the page before its scripts: the page is told it is hidden, as a
+// tab opened in the background (middle click, session restore) is, until
+// the test calls window.__show().
+function hiddenUntilShown() {
+  let hidden = true;
+  Object.defineProperty(Document.prototype, 'hidden', { configurable: true, get: () => hidden });
+  Object.defineProperty(Document.prototype, 'visibilityState', {
+    configurable: true,
+    get: () => (hidden ? 'hidden' : 'visible'),
+  });
+  window.__show = () => {
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+}
+
+// Opens the player in a new tab and, unless told not to, waits until the
+// game runs. A background tab starts hidden (see hiddenUntilShown).
+async function openPlayer(context, url, problems, { wait = true, background = false } = {}) {
   const page = await context.newPage();
   page.on('console', (m) => {
     if (m.type() === 'error' || m.type() === 'warning') problems.push(m.text());
   });
   page.on('pageerror', (e) => problems.push(e.message));
   await page.addInitScript(pageHooks);
+  if (background) await page.addInitScript(hiddenUntilShown);
   await page.goto(url);
   if (wait) await waitRunning(page);
   return page;
@@ -186,6 +207,16 @@ function waitStarted(page) {
     null,
     { timeout: 15000 },
   );
+}
+
+// The player's state, the CPU ticks it has run, and any message over the
+// game screen.
+function playerStatus(page) {
+  return page.evaluate(() => {
+    const overlay = document.getElementById('overlay');
+    const message = overlay.hidden ? '' : [...overlay.querySelectorAll('p')].map((p) => p.textContent).join(' ');
+    return { state: window.pandajump.state, ticks: window.pandajump.ticks, message };
+  });
 }
 
 // ------------------------------------------------------------ game memory
@@ -389,17 +420,25 @@ async function desktopChecks(browser, url, syms, problems) {
   await context.close();
 }
 
-// Three tabs opened together on a fresh browser (each game writes the same
-// blank save block when it boots), then a real new best in one of them.
-// Before the fix this caught the false "played in another tab" about 8 runs
-// in 10: it depends on the order the saves land in.
+// On a fresh browser: a tab opened in the background (hidden, so its game
+// hasn't started), then three tabs opened together (a game may write a
+// fresh save block when it boots on a blank cartridge, the same in each
+// tab), then a real new best in one of them. Before the fixes the three
+// tabs caught the false "played in another tab" about 8 runs in 10 (it
+// depends on the order the saves land in), and the background tab every
+// time.
 async function saveChecks(browser, url, syms, problems) {
   const context = await browser.newContext({ viewport: { width: 1000, height: 700 } });
-  const tabs = await Promise.all([1, 2, 3].map(() => openPlayer(context, url, problems, false)));
+  const background = await openPlayer(context, url, problems, { wait: false, background: true });
+  await background.waitForFunction(() => window.pandajump && window.pandajump.state === 'paused' && window.__gb, null, { timeout: 15000 });
+  const tabs = await Promise.all([1, 2, 3].map(() => openPlayer(context, url, problems, { wait: false })));
   await Promise.all(tabs.map(waitStarted));
   await tabs[0].waitForTimeout(1000);
   const states = await Promise.all(tabs.map((p) => p.evaluate(() => window.pandajump.state)));
   check(states.every((s) => s === 'running'), `three tabs opened together all keep running (${states.join(', ')})`);
+  let waiting = await playerStatus(background);
+  check(waiting.state === 'paused' && waiting.ticks === 0 && !waiting.message,
+    `a tab opened in the background waits, game not started, and doesn't stop (${waiting.state}, ${waiting.ticks} ticks${waiting.message ? ', "' + waiting.message + '"' : ''})`);
   const [a, b] = tabs;
   if (states[1] !== 'running') {
     await context.close();
@@ -426,6 +465,16 @@ async function saveChecks(browser, url, syms, problems) {
 
   const other = await a.evaluate(() => [window.pandajump.state, document.getElementById('overlay').textContent]);
   check(other[0] === 'stopped' && /another tab/.test(other[1]), `another tab stops after the new best (${other[0]})`);
+
+  // The background tab's game hasn't read its cartridge RAM yet, so it
+  // takes the new save and starts from it when it comes to the front.
+  waiting = await playerStatus(background);
+  check(waiting.state === 'paused' && !waiting.message,
+    `the background tab doesn't stop after the new best (${waiting.state}${waiting.message ? ', "' + waiting.message + '"' : ''})`);
+  await background.evaluate(() => window.__show());
+  const shown = waiting.state === 'paused' && await waitRunning(background).then(() => true, () => false);
+  const adopted = shown ? await peek(background, syms.high_score) | (await peek(background, syms.high_score + 1) << 8) : -1;
+  check(adopted === 7, `brought to the front, the background tab starts with the new best (${adopted})`);
 
   await b.reload();
   await waitRunning(b);

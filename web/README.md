@@ -112,7 +112,8 @@ joypad register, and checks that:
   on a focused link doesn't scroll the page;
 - sound plays at a good level and never above full scale;
 - tabs opened together keep running, a real new best in one stops another,
-  and the best score survives a reload;
+  a tab waiting in the background doesn't stop and starts with that best
+  once it comes to the front, and the best score survives a reload;
 - a missing ROM shows a message;
 - touch works on a phone, and the whole handheld fits from 320 × 568 to
   844 × 390;
