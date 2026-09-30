@@ -88,3 +88,13 @@ def test_music_stays_off_the_effect_channels(sgame):
     assert max(levels(g, 90)) == 0, "sound on channels 1/4 with no effect playing"
     g.pb.memory[NR51] = CH2 | CH3
     assert max(levels(g, 90)) > 0, "no music on channels 2/3 during a run"
+
+
+def test_score_sounds_on_effect_channel(sgame, cfg):
+    g = sgame
+    g.start_run(invincible=True)
+    g.run_until(lambda g: g.u16("world_x") > 100, 400)
+    g.pb.memory[NR51] = CH1
+    assert max(levels(g, 5)) == 0
+    g.run_until(lambda g: g.u16("score") == 1, 400)
+    assert max(levels(g, 6)) > 0, "no sound when scoring"

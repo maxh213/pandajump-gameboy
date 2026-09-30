@@ -1,27 +1,10 @@
 """Sprites (docs/DESIGN.md "Tiles and VRAM", art/panda.png and art/fx.png
 frame tables): which panda frame is shown when, the dust puff, the
 sprite tile range and the hardware limits."""
-import re
-
-from gb import BUILD
+from gb import metasprites
 
 RUN_FRAMES = range(0, 6)
 JUMP, DOUBLE, FALL, DEAD = 6, 7, 8, 9
-
-
-def metasprites(name):
-    """{frame: sorted ((y, x, tile), ...)} from png2asset's output."""
-    text = (BUILD / "res" / f"{name}.c").read_text()
-    out = {}
-    for idx, body in re.findall(rf"const metasprite_t {name}_metasprite(\d+)\[\] = \{{(.*?)\}};", text, re.S):
-        y = x = 0
-        items = []
-        for dy, dx, tile in re.findall(r"METASPR_ITEM\((-?\d+),\s*(-?\d+),\s*(\d+)", body):
-            y += int(dy)
-            x += int(dx)
-            items.append((y, x, int(tile)))
-        out[int(idx)] = tuple(sorted(items))
-    return out
 
 
 def panda_frame(g, cfg, frames):

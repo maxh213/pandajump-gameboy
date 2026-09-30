@@ -3,22 +3,14 @@ BG map row 1 (0x9800) with the dark font, the high score in the window
 (0x9C00, WY=136, WX=7) with the light font, and the pixels on screen are
 exactly those tiles."""
 import numpy as np
-from PIL import Image
 
-from gb import ROOT
-from test_boot import light_digits
-from test_scoring import digits_row
-
-TILES = np.array(Image.open(ROOT / "art" / "bg_tiles.png"))
-
-
-def tile_px(i):
-    r, c = divmod(i, 16)
-    return TILES[r * 8:r * 8 + 8, c * 8:c * 8 + 8]
+from gb import bg_tile_pixels, hud_hi_row, ram_image, score_row, sram_block
 
 
 def row_px(tiles):
-    return np.hstack([tile_px(t) for t in tiles])
+    """The pixels of a row of BG tiles (art/bg_tiles.png, BGP 0xE4)."""
+    px = bg_tile_pixels()
+    return np.hstack([px[t] for t in tiles])
 
 
 def test_lcd_setup(game, cfg):
@@ -41,21 +33,18 @@ def test_score_row_uses_dark_font(make_game, cfg):
     g.start_run(invincible=True)
     g.run_until(lambda g: g.u16("score") == 12, 5000)
     g.tick(2, render=True)
-    assert g.bg_row(1)[1:6] == digits_row(cfg, 12)
+    assert g.bg_row(1)[1:6] == score_row(cfg, 12)
     assert g.bg_row(1)[0] == cfg.T_SKY and g.bg_row(1)[6:20] == [cfg.T_SKY] * 14
     sh = g.shades()
-    want = row_px([cfg.T_SKY] + digits_row(cfg, 12) + [cfg.T_SKY] * 14)
+    want = row_px([cfg.T_SKY] + score_row(cfg, 12) + [cfg.T_SKY] * 14)
     assert np.array_equal(sh[8:16, :], want), "score row pixels differ from the dark font"
     assert (sh[0:8, :] == 0).all(), "map row 0 should be plain sky"
 
 
 def test_window_shows_hi_with_light_font(make_game, cfg):
-    from test_save import ram_with
-    from gb import sram_block
-    g = make_game(ram=ram_with(sram_block(907)))
+    g = make_game(ram=ram_image(sram_block(907)))
     g.tick(2, render=True)
-    tiles = light_digits(cfg, " HI 0907")
-    tiles += [cfg.T_HUD_DARK] * (20 - len(tiles))
+    tiles = hud_hi_row(cfg, 907)
     assert g.win_row(0)[:20] == tiles
     sh = g.shades()
     assert np.array_equal(sh[136:144, :], row_px(tiles)), "window pixels differ from the light font"

@@ -6,10 +6,7 @@ picture moved between two frames."""
 import numpy as np
 import pytest
 
-HUD = slice(0, 16)
-SKY = slice(16, 48)
-WORLD = slice(48, 136)
-WINDOW = slice(136, 144)
+from gb import HUD, SKY, WINDOW, WORLD, render_band
 
 
 def shifts(a, b, dxs, dys, x0=0):
@@ -128,51 +125,44 @@ def test_hud_and_window_are_static(running):
     assert np.array_equal(a[WINDOW], b[WINDOW])
 
 
-def render_band(g, lines, scx, scy, tiles_px):
-    """What the BG shows on `lines` with this scroll, from the map in VRAM
-    and the tile pixels of art/bg_tiles.png (BGP 0xE4: index = shade)."""
-    out = np.zeros((len(lines), 160), dtype=np.uint8)
-    xs = (np.arange(160) + scx) & 255
-    for i, line in enumerate(lines):
-        y = (line + scy) & 255
-        row = g.bg_row(y >> 3)
-        out[i] = [tiles_px[row[x >> 3]][y & 7][x & 7] for x in xs]
-    return out
-
-
 def test_screen_matches_vram_render(make_game, cfg):
     """Each band on screen is exactly the BG map drawn with that band's
     scroll for the frame the RAM describes: HUD at 0, sky at the sky
     band's scroll (world speed >> CLOUD_SHIFT per frame since the run
-    started, plus a 0-4 bob), world at world_scx. Sprite columns are left
-    out. The screen after tick k+1 shows the logic of tick k."""
-    from PIL import Image
-    from gb import ROOT
-    art = np.array(Image.open(ROOT / "art" / "bg_tiles.png"))
-    tiles_px = [art[(i // 16) * 8:(i // 16) * 8 + 8, (i % 16) * 8:(i % 16) * 8 + 8] for i in range(128)]
+    started, plus a 0-4 bob), world at world_scx, through the speed ramp.
+    Sprite columns are left out. The screen after tick k+1 shows the logic
+    of tick k."""
+    from gb import bg_picture
     g = make_game()
     g.start_run(invincible=True)
     sky_pos, speed = 0, g.u16("world_speed")
     keep = np.ones(160, dtype=bool)
     keep[24:56] = False                      # panda and dust puff
-    for frame in range(1, 400):
-        render = frame % 23 in (0, 1)
-        if render and frame % 23 == 1:
+    checked = 0
+    for frame in range(1, 3000):
+        sample = frame % 5 == 1 and frame > 5
+        if sample:
+            # what tick k+1 draws: frame k's scroll and the map as it stood
+            # after frame k's VBlank writes (frame k+1's writes come later)
             wscx = g.u8("world_scx")
             sscx = (sky_pos >> 8) & 255
-        g.tick(1, render=render)
+            pic = bg_picture(g)
+        g.tick(1, render=frame % 5 in (0, 1))
         sky_pos = (sky_pos + (speed >> cfg.CLOUD_SHIFT)) & 0xFFFF
         speed = g.u16("world_speed")
-        if not (render and frame % 23 == 1 and frame > 23):
+        if not sample:
             continue
         sh = g.shades()
-        hud = render_band(g, range(0, 16), 0, 0, tiles_px)
+        hud = render_band(g, range(0, 16), 0, 0, pic)
         assert np.array_equal(sh[HUD][:, keep], hud[:, keep]), f"frame {frame}: HUD band"
-        world = render_band(g, range(48, 136), wscx, 0, tiles_px)
+        world = render_band(g, range(48, 136), wscx, 0, pic)
         assert np.array_equal(sh[WORLD][:, keep], world[:, keep]), f"frame {frame}: world band at scx {wscx}"
         ok = [bob for bob in range(5)
-              if np.array_equal(sh[SKY][:, keep], render_band(g, range(16, 48), sscx, bob, tiles_px)[:, keep])]
+              if np.array_equal(sh[SKY][:, keep], render_band(g, range(16, 48), sscx, bob, pic)[:, keep])]
         assert ok, f"frame {frame}: sky band does not match scx {sscx} with any bob 0-4"
+        checked += 1
+    assert g.u16("world_speed") > cfg.SPEED_BASE, "the check should reach the speed ramp"
+    assert checked > 500
 
 
 def test_clouds_keep_coming(make_game, cfg):

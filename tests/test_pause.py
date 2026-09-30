@@ -3,8 +3,8 @@
 left off."""
 import numpy as np
 
+from gb import dark_text, find_text
 from model import Physics
-from test_death import row_text_on_screen, text_tiles
 
 
 def snapshot(g):
@@ -28,7 +28,7 @@ def test_start_pauses(make_game, cfg):
     g = paused_mid_jump(make_game, cfg)
     scx = g.u8("world_scx")
     g.tick(1)
-    x = row_text_on_screen(g, 8, text_tiles(cfg, "PAUSED"), scx)
+    x = find_text(g, 8, dark_text(cfg, "PAUSED"), scx)
     assert x is not None, "PAUSED not shown"
     assert abs(x + 4 * len("PAUSED") - 80) <= 4
 

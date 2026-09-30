@@ -7,13 +7,8 @@ columns), and an obstacle counts once its right edge is at or left of the
 hitbox's left edge (PANDA_X + HIT_X0 on screen)."""
 import bisect
 
+from gb import score_row, unwrap16
 from model import WorldMap
-from gb import unwrap16
-
-
-def digits_row(cfg, value):
-    s = str(value)
-    return [cfg.T_FONT_DIGIT + int(c) for c in s] + [cfg.T_SKY] * (5 - len(s))
 
 
 def test_score_once_per_obstacle(make_game, cfg):
@@ -43,7 +38,7 @@ def test_score_once_per_obstacle(make_game, cfg):
     # the HUD follows: the digits of the score, at most one frame late
     for i in range(1, len(samples)):
         row = samples[i][2]
-        assert row in (digits_row(cfg, samples[i][1]), digits_row(cfg, samples[i - 1][1])), \
+        assert row in (score_row(cfg, samples[i][1]), score_row(cfg, samples[i - 1][1])), \
             f"frame {i + 1}: score row {row} for score {samples[i][1]}"
         if i + 1 < len(samples):
-            assert samples[i + 1][2] == digits_row(cfg, samples[i][1]) or samples[i + 1][1] != samples[i][1]
+            assert samples[i + 1][2] == score_row(cfg, samples[i][1]) or samples[i + 1][1] != samples[i][1]

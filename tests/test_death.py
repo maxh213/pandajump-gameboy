@@ -4,32 +4,8 @@ import io
 
 import pytest
 
-from gb import record_world
+from gb import dark_text, find_text, record_world, render_band
 from model import AutoPlayer, Physics, WorldMap
-
-
-def text_tiles(cfg, text):
-    out = []
-    for ch in text:
-        if ch == " ":
-            out.append(cfg.T_SKY)
-        elif ch.isdigit():
-            out.append(cfg.T_FONT_DIGIT + int(ch))
-        elif ch == "!":
-            out.append(cfg.T_FONT_BANG)
-        else:
-            out.append(cfg.T_FONT_ALPHA + ord(ch) - ord("A"))
-    return out
-
-
-def row_text_on_screen(g, row, text_tiles_, scx):
-    """Screen x of `text_tiles_` in BG row `row` (wrapping), or None."""
-    r = g.bg_row(row)
-    n = len(text_tiles_)
-    for c in range(32):
-        if [r[(c + i) & 31] for i in range(n)] == text_tiles_:
-            return (c * 8 - scx) % 256
-    return None
 
 
 def die_without_input(g, cap=2000):
@@ -66,7 +42,7 @@ def test_dead_state_shows_game_over_and_score(game, cfg):
     scx = game.u8("world_scx")
     game.tick(1)   # BG text appears one frame after the state change
     for row, text in ((7, "GAME OVER"), (8, "SCORE 0")):
-        x = row_text_on_screen(game, row, text_tiles(cfg, text), scx)
+        x = find_text(game, row, dark_text(cfg, text), scx)
         assert x is not None, f"{text!r} not in BG row {row}"
         centre = x + 4 * len(text)
         assert abs(centre - 80) <= 4, f"{text!r} is not centred (starts at x={x})"
@@ -76,14 +52,14 @@ def test_press_start_appears_after_the_delay(game, cfg):
     game.start_run()
     die_without_input(game)
     scx = game.u8("world_scx")
-    want = text_tiles(cfg, "PRESS START")
+    want = dark_text(cfg, "PRESS START")
     for _ in range(cfg.DEAD_DELAY):
         game.tick()
-        assert row_text_on_screen(game, 9, want, scx) is None
+        assert find_text(game, 9, want, scx) is None
     seen = False
     for _ in range(2 * cfg.BLINK_FRAMES + 2):
         game.tick()
-        seen |= row_text_on_screen(game, 9, want, scx) is not None
+        seen |= find_text(game, 9, want, scx) is not None
     assert seen
 
 
@@ -220,3 +196,63 @@ def test_collision_edges_match_the_hitbox(make_game, cfg, height):
         g.release("a")
         assert died == want, (f"take-off at frame {f} (clear window {lo}..{hi}, "
                               f"height {first.height}): died at {died}, model says {want}")
+
+
+def test_death_hop_and_fall_follow_the_physics(game, cfg):
+    """The death pose hops (vy = -DEAD_HOP_VEL) and falls with GRAVITY and
+    MAX_FALL through the ground, stopping once fully below it."""
+    game.start_run()
+    die_without_input(game)
+    y, vy = game.s16("panda_y"), game.s16("panda_vy")
+    assert vy == -cfg.DEAD_HOP_VEL
+    assert y == (cfg.GROUND_Y - 16) << 8
+    sunk = cfg.GROUND_Y << 8
+    for n in range(200):
+        game.tick()
+        if y < sunk:
+            vy = min(vy + cfg.GRAVITY, cfg.MAX_FALL)
+            y = max(y + vy, 0)
+        assert (game.s16("panda_y"), game.s16("panda_vy")) == (y, vy), f"dead frame {n + 1}"
+    assert y >= sunk
+
+
+def test_restart_frames_render_clean(make_game, cfg):
+    """Restarting clears the old boxes and messages in the VBlank(s) after
+    the press. With a busy map (6+ box columns) the first frames of the new
+    run must already show exactly the new map at the new scroll (no stale
+    boxes or text), HUD band included."""
+    import numpy as np
+    from gb import HUD, WORLD, bg_picture
+    hx0, hx1 = cfg.PANDA_X + cfg.HIT_X0, cfg.PANDA_X + cfg.HIT_X1
+    g = make_game()
+    g.start_run(invincible=True)
+    g.run_until(lambda g: g.u16("score") >= 12, 5000)
+
+    def busy_and_touching(g):
+        ch, scx = g.col_height(), g.u8("world_scx")
+        return sum(1 for h in ch if h) >= 6 and (ch[((scx + hx0) & 255) >> 3] or ch[((scx + hx1) & 255) >> 3])
+
+    g.run_until(busy_and_touching, 5000)
+    g.write8("debug_invincible", 0)
+    g.tick()
+    assert g.state() == cfg.STATE_DEAD
+    g.tick(cfg.DEAD_DELAY + 5)
+    g.hold("start")
+    g.tick(1, render=True)
+    g.release("start")
+    g.tick(1, render=True)
+    assert g.state() == cfg.STATE_PLAY
+    keep = np.ones(160, dtype=bool)
+    keep[24:56] = False                    # the panda
+    for i in range(4):
+        wscx = g.u8("world_scx")
+        g.tick(1, render=True)
+        sh = g.shades()
+        # The clearing runs on past VBlank into this frame, so compare with
+        # the map as it is after the frame: it must have been finished
+        # before the beam reached the rows it touches.
+        pic = bg_picture(g)
+        world = render_band(g, range(48, 136), wscx, 0, pic)
+        assert np.array_equal(sh[WORLD][:, keep], world[:, keep]), f"frame {i + 1} of the new run"
+        assert np.array_equal(sh[HUD], render_band(g, range(0, 16), 0, 0, pic))
+        assert (sh[48:112][:, keep] == 0).all(), "rows 6-13 should be empty sky right after a restart"

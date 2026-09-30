@@ -49,6 +49,12 @@ BOOT_FRAME_CAP = 400      # PyBoy's boot logo takes ~70 frames
 BG_MAP = 0x9800
 WIN_MAP = 0x9C00
 
+# Screen bands (docs/DESIGN.md "Screen layout"), as row slices of shades().
+HUD = slice(0, 16)
+SKY = slice(16, 48)
+WORLD = slice(48, 136)
+WINDOW = slice(136, 144)
+
 
 def parse_defines(path: Path) -> dict[str, int]:
     """The plain ``#define NAME <integer>`` lines of a C header."""
@@ -304,6 +310,116 @@ def record_world(g: GB, frames: int, wmap=None, chunk: int = 16, on_sample=None)
     wmap._x = x
     wmap._raw = raw
     return wmap, x
+
+
+def ram_image(block: bytes, fill: int = 0) -> bytes:
+    """8 KiB of cartridge RAM starting with `block`."""
+    return bytes(block) + bytes([fill]) * (0x2000 - len(block))
+
+
+# ---- text as tiles (src/tiles.h fonts) -------------------------------------
+def dark_text(cfg, text: str) -> list[int]:
+    """Tiles of `text` in the dark font (space is T_SKY)."""
+    special = {" ": cfg.T_SKY, "!": cfg.T_FONT_BANG, "-": cfg.T_FONT_DASH, ":": cfg.T_FONT_COLON,
+               ".": cfg.T_FONT_DOT, "?": cfg.T_FONT_QUEST, "'": cfg.T_FONT_APOS, "/": cfg.T_FONT_SLASH}
+    out = []
+    for ch in text:
+        if ch in special:
+            out.append(special[ch])
+        elif ch.isdigit():
+            out.append(cfg.T_FONT_DIGIT + int(ch))
+        else:
+            out.append(cfg.T_FONT_ALPHA + ord(ch) - ord("A"))
+    return out
+
+
+def light_text(cfg, text: str) -> list[int]:
+    """Tiles of `text` in the light font (space is T_HUD_DARK)."""
+    out = []
+    for ch in text:
+        if ch == " ":
+            out.append(cfg.T_HUD_DARK)
+        elif ch.isdigit():
+            out.append(cfg.T_LFONT_DIGIT + int(ch))
+        else:
+            out.append(cfg.T_LFONT_ALPHA + ord(ch) - ord("A"))
+    return out
+
+
+def score_row(cfg, value: int) -> list[int]:
+    """Map row 1, columns 1-5: the score, left-aligned, dark font."""
+    s = str(value)
+    return dark_text(cfg, s) + [cfg.T_SKY] * (5 - len(s))
+
+
+def hud_hi_row(cfg, value: int) -> list[int]:
+    """Window row 0: " HI 0042" (at least 4 digits) in the light font, the
+    rest T_HUD_DARK."""
+    row = light_text(cfg, f" HI {value:04d}")
+    return row + [cfg.T_HUD_DARK] * (20 - len(row))
+
+
+def find_text(g: GB, row: int, tiles: list[int], scx: int):
+    """Screen x where `tiles` sit in BG map row `row` (the text may wrap past
+    column 31) when the band's scroll is `scx`, or None."""
+    r = g.bg_row(row)
+    n = len(tiles)
+    for c in range(32):
+        if [r[(c + i) & 31] for i in range(n)] == tiles:
+            return (c * 8 - scx) % 256
+    return None
+
+
+# ---- art and generated assets ------------------------------------------------
+_TILE_PX = None
+
+
+def bg_tile_pixels() -> np.ndarray:
+    """The 128 8x8 tiles of art/bg_tiles.png as colour indices, (128, 8, 8)."""
+    global _TILE_PX
+    if _TILE_PX is None:
+        from PIL import Image
+        art = np.array(Image.open(ROOT / "art" / "bg_tiles.png"))
+        _TILE_PX = art.reshape(8, 8, 16, 8).transpose(0, 2, 1, 3).reshape(128, 8, 8)
+    return _TILE_PX
+
+
+def bg_picture(g: GB) -> np.ndarray:
+    """The whole 256x256 BG map in VRAM drawn with art/bg_tiles.png."""
+    m = np.array(g.pb.memory[BG_MAP:BG_MAP + 1024], dtype=np.intp).reshape(32, 32)
+    assert (m < 128).all(), "BG map uses logo tiles"
+    return bg_tile_pixels()[m].transpose(0, 2, 1, 3).reshape(256, 256)
+
+
+def render_band(g: GB, lines, scx: int, scy: int, picture: np.ndarray | None = None) -> np.ndarray:
+    """What the BG shows on screen `lines` with this scroll (BGP 0xE4, so
+    colour index = shade)."""
+    pic = bg_picture(g) if picture is None else picture
+    ys = (np.asarray(list(lines)) + scy) & 255
+    xs = (np.arange(160) + scx) & 255
+    return pic[ys][:, xs].astype(np.uint8)
+
+
+def generated_array(name: str, array: str) -> list[int]:
+    """A byte array from png2asset's build/res/<name>.c."""
+    text = (BUILD / "res" / f"{name}.c").read_text()
+    m = re.search(rf"{array}\[\d+\] = \{{(.*?)\}};", text, re.S)
+    return [int(v, 16) for v in re.findall(r"0x[0-9a-fA-F]+", m.group(1))]
+
+
+def metasprites(name: str) -> dict:
+    """{frame: sorted ((y, x, tile), ...)} from build/res/<name>.c."""
+    text = (BUILD / "res" / f"{name}.c").read_text()
+    out = {}
+    for idx, body in re.findall(rf"const metasprite_t {name}_metasprite(\d+)\[\] = \{{(.*?)\}};", text, re.S):
+        y = x = 0
+        items = []
+        for dy, dx, tile in re.findall(r"METASPR_ITEM\((-?\d+),\s*(-?\d+),\s*(\d+)", body):
+            y += int(dy)
+            x += int(dx)
+            items.append((y, x, int(tile)))
+        out[int(idx)] = tuple(sorted(items))
+    return out
 
 
 def unwrap16(prev: int, new: int) -> int:

@@ -3,21 +3,8 @@ starting a run, and the RNG seeding (docs/DESIGN.md "States and controls",
 "Save RAM", "Gameplay")."""
 import pytest
 
-from gb import sram_block
+from gb import hud_hi_row, record_world, sram_block
 from model import Scroll, WorldMap
-from gb import record_world
-
-
-def light_digits(cfg, text):
-    out = []
-    for ch in text:
-        if ch == " ":
-            out.append(cfg.T_HUD_DARK)
-        elif ch.isdigit():
-            out.append(cfg.T_LFONT_DIGIT + int(ch))
-        else:
-            out.append(cfg.T_LFONT_ALPHA + ord(ch) - ord("A"))
-    return out
 
 
 def test_boots_to_title(game, cfg):
@@ -29,8 +16,9 @@ def test_boots_to_title(game, cfg):
 
 
 def test_title_hud_shows_hi_0000_from_blank_save(game, cfg):
-    expected = light_digits(cfg, " HI 0000") + [cfg.T_HUD_DARK] * 12
-    assert game.win_row(0)[:20] == expected
+    assert game.win_row(0)[:20] == hud_hi_row(cfg, 0)
+    assert hud_hi_row(cfg, 0)[:8] == [cfg.T_HUD_DARK, cfg.T_LFONT_ALPHA + 7, cfg.T_LFONT_ALPHA + 8, cfg.T_HUD_DARK] \
+        + [cfg.T_LFONT_DIGIT] * 4
 
 
 def test_title_hides_the_score(game, cfg):
@@ -143,3 +131,14 @@ def test_rng_is_seeded_by_the_press_frame(make_game):
 
 def test_same_press_frame_same_obstacles(make_game):
     assert first_obstacles(make_game, 5, "a") == first_obstacles(make_game, 5, "b")
+
+
+def test_press_start_blinks_every_blink_frames(game, cfg):
+    shown = []
+    for _ in range(6 * cfg.BLINK_FRAMES):
+        game.tick()
+        y, x, t, a = game.oam()[cfg.OAM_TEXT]
+        shown.append(0 <= y < 144)
+    changes = [i for i in range(1, len(shown)) if shown[i] != shown[i - 1]]
+    assert len(changes) >= 4
+    assert all(b - a == cfg.BLINK_FRAMES for a, b in zip(changes, changes[1:])), changes

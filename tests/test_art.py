@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from gb import BUILD, ROOT
+from gb import BUILD, ROOT, generated_array, metasprites
 
 ART = ROOT / "art"
 RES = BUILD / "res"
@@ -135,9 +135,7 @@ def _decode(data, i):
 @pytest.mark.parametrize("name,size", [("panda", 16), ("fx", 8)])
 def test_metasprites_rebuild_the_art(name, size):
     """Each generated metasprite, drawn from its tiles, is the art frame."""
-    from test_sprites import metasprites
-    from test_vram import c_array
-    data = c_array(name, f"{name}_tiles")
+    data = generated_array(name, f"{name}_tiles")
     art = np.array(Image.open(ART / f"{name}.png"))
     frames = metasprites(name)
     assert len(frames) == art.shape[1] // size

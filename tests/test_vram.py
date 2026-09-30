@@ -3,12 +3,10 @@ art/bg_tiles.png in order (LCDC bit 4 = 0, so they live at 0x9000), the
 title logo at BG 128+ (0x8800), sprite tiles at 0x8000: the panda at
 S_PANDA_BASE, the dust puff at S_FX_BASE and the dark font's A-Z at
 S_TEXT_BASE."""
-import re
-
 import numpy as np
 from PIL import Image
 
-from gb import BUILD, ROOT
+from gb import ROOT, generated_array
 
 
 def encode_2bpp(px):
@@ -29,12 +27,6 @@ def art_tiles(name):
     return [encode_2bpp(a[r:r + 8, c:c + 8]) for r in range(0, h, 8) for c in range(0, w, 8)]
 
 
-def c_array(name, array):
-    text = (BUILD / "res" / f"{name}.c").read_text()
-    m = re.search(rf"{array}\[\d+\] = \{{(.*?)\}};", text, re.S)
-    return [int(v, 16) for v in re.findall(r"0x[0-9a-fA-F]+", m.group(1))]
-
-
 def vram(g, addr, n):
     return [g.pb.memory[addr + i] for i in range(n)]
 
@@ -51,17 +43,17 @@ def test_bg_tiles_are_the_art_in_order(game):
 
 
 def test_logo_tiles_and_map(game, cfg):
-    data = c_array("title_logo", "title_logo_tiles")
+    data = generated_array("title_logo", "title_logo_tiles")
     assert vram(game, bg_tile_addr(cfg.T_LOGO_BASE), len(data)) == data
-    logo_map = c_array("title_logo", "title_logo_map")
+    logo_map = generated_array("title_logo", "title_logo_map")
     rows = [game.bg_row(r)[1:19] for r in range(2, 6)]
     assert sum(rows, []) == logo_map
 
 
 def test_sprite_tiles(game, cfg):
-    panda = c_array("panda", "panda_tiles")
+    panda = generated_array("panda", "panda_tiles")
     assert vram(game, 0x8000 + 16 * cfg.S_PANDA_BASE, len(panda)) == panda
-    fx = c_array("fx", "fx_tiles")
+    fx = generated_array("fx", "fx_tiles")
     assert vram(game, 0x8000 + 16 * cfg.S_FX_BASE, len(fx)) == fx
     font = art_tiles("bg_tiles.png")
     for j in range(26):
