@@ -1,9 +1,10 @@
 """Boot to the title screen, the save block written on a blank cartridge,
 starting a run, and the RNG seeding (docs/DESIGN.md "States and controls",
 "Save RAM", "Gameplay")."""
+import numpy as np
 import pytest
 
-from gb import hud_hi_row, record_world
+from gb import SKY, bg_picture, hud_hi_row, record_world, render_band
 from model import Scroll, WorldMap
 
 
@@ -67,10 +68,17 @@ def test_blank_save_is_left_alone(make_game):
 
 @pytest.mark.parametrize("button", ["start", "a"])
 def test_start_or_a_begins_a_run(game, cfg, button):
-    game.start_run(button)
+    game.tick(21)
+    game.hold(button)
+    game.tick()
+    game.release(button)
+    title = game.scroll()                # the title scrolls too
+    game.tick()                          # the title's last frame starts the run
+    title.step()
     assert game.state() == cfg.STATE_PLAY
     assert game.u16("score") == 0
-    assert game.u16("world_x") == 0
+    # the run starts at the title's world_x & 15: the ground stays put
+    assert (game.u16("world_x"), game.u8("world_sub")) == (title.x & 15, 0)
     assert game.u8("panda_on_ground") == 1
     assert game.u8("jumps_used") == 0
     assert game.col_height() == [0] * 32
@@ -90,6 +98,58 @@ def test_run_shows_score_zero(game, cfg):
     game.start_run()
     game.tick(1)
     assert game.bg_row(1)[1:6] == [cfg.T_FONT_DIGIT] + [cfg.T_SKY] * 4
+
+
+def ground_shifts(a, b):
+    """How far the ground band moved left from a to b (its pattern repeats
+    every 16 px, and 160 is a multiple of 16)."""
+    return [dx for dx in range(16) if np.array_equal(np.roll(a, -dx, axis=1), b)]
+
+
+def test_ground_does_not_jump_when_a_run_starts(make_game, cfg):
+    """The ground (lines 112-135) moves on by the usual 1-2 px on every
+    frame across the start of a run, instead of snapping to world_x 0."""
+    for wait in (5, 11, 19):             # different ground phases
+        game = make_game(name=f"w{wait}")
+        game.tick(wait)
+        game.tick(2, render=True)
+        prev = game.shades()[112:136].copy()
+        game.hold("start")
+        for i in range(8):
+            game.tick(1, render=True)
+            game.release("start")
+            cur = game.shades()[112:136]
+            found = ground_shifts(prev, cur)
+            assert set(found) & {0, 1, 2}, f"frame {i}: the ground moved by {found}"
+            prev = cur.copy()
+        assert game.state() == cfg.STATE_PLAY
+        game.stop()
+
+
+def test_logo_wipe_is_hidden(game, cfg):
+    """While the logo's rows are replaced (4 frames) the sky band shows
+    plain sky, never part logo, part clouds; then the new sky appears."""
+    game.tick(2, render=True)
+    title = game.shades()[SKY].copy()
+    assert (title != 0).any()
+    game.hold("start")
+    game.tick(1, render=True)
+    game.release("start")
+    seen = []
+    for _ in range(10):
+        game.tick(1, render=True)
+        sky = game.shades()[SKY]
+        if np.array_equal(sky, title):
+            seen.append("logo")
+        elif (sky == 0).all():
+            seen.append("sky")
+        else:
+            pic = bg_picture(game)       # fails while logo tiles are left in the map
+            ok = any(np.array_equal(sky, render_band(game, range(16, 48), scx, bob, pic))
+                     for scx in range(4) for bob in range(5))
+            assert ok, f"sky band after {len(seen)} frames is neither the logo, plain sky nor the new sky"
+            seen.append("run")
+    assert seen == ["logo"] + ["sky"] * 4 + ["run"] * 5, seen
 
 
 def test_logo_becomes_sky_over_4_frames(game, cfg):

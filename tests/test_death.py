@@ -112,24 +112,31 @@ def test_first_press_after_dead_delay_restarts(game, cfg, button):
 def test_restart_is_a_fresh_run(game, cfg):
     game.start_run()
     die_without_input(game)
+    old_x = game.u16("world_x")
     game.tick(cfg.DEAD_DELAY + 5)
+    assert game.u16("world_x") == old_x, "the world should stand still while dead"
     game.tap("start")
     assert game.state() == cfg.STATE_PLAY
     assert game.u16("score") == 0
     assert game.col_height() == [0] * 32
     x0 = game.u16("world_x")
-    assert x0 == 0
+    assert x0 == old_x & 15, "the new run should keep the ground's 16 px phase"
     assert (game.u8("world_sub"), game.u16("world_speed")) == (0, cfg.SPEED_BASE)
     assert (game.s16("panda_y"), game.s16("panda_vy"), game.u8("panda_on_ground"),
             game.u8("jumps_used")) == ((cfg.GROUND_Y - 16) << 8, 0, 1, 0)
     game.tick(2)
-    # old boxes and messages are gone from the map
+    # Old boxes are gone from the 22 map columns the new run shows before
+    # the generator reaches them; the other 10 are rewritten before they
+    # scroll into view (checked below). Messages are gone too.
+    first = x0 >> 3
     for row in range(10, 14):
-        assert game.bg_row(row) == [cfg.T_SKY] * 32, f"row {row} not cleared"
+        r = game.bg_row(row)
+        assert [r[(first + c) & 31] for c in range(22)] == [cfg.T_SKY] * 22, f"row {row} not cleared"
     for row in range(6, 10):
         assert game.bg_row(row) == [cfg.T_SKY] * 32, f"message row {row} not cleared"
     assert game.bg_row(1)[1:6] == [cfg.T_FONT_DIGIT] + [cfg.T_SKY] * 4
-    # and it plays the same way: the first obstacle is FIRST_GAP tiles in
+    # and it plays the same way: the first obstacle is FIRST_GAP tiles in,
+    # with no old box ever in view
     hx1 = cfg.PANDA_X + cfg.HIT_X1
     last = x0
     while True:
@@ -137,6 +144,11 @@ def test_restart_is_a_fresh_run(game, cfg):
         if game.state() != cfg.STATE_PLAY:
             break
         last = game.u16("world_x")
+        ch, left = game.col_height(), (game.u8("world_scx") >> 3)
+        rows = [game.bg_row(row) for row in range(10, 14)]
+        for c in range(left, left + 21):
+            if not ch[c & 31]:
+                assert all(r[c & 31] == cfg.T_SKY for r in rows), f"an old box at map column {c & 31}"
     assert last + hx1 < first_obstacle_start(cfg, x0) * 8 <= game.u16("world_x") + hx1
 
 
@@ -251,18 +263,27 @@ def test_restart_frames_render_clean(make_game, cfg):
     g.write8("debug_invincible", 0)
     g.tick()
     assert g.state() == cfg.STATE_DEAD
-    g.tick(cfg.DEAD_DELAY + 5)
+    g.tick(cfg.DEAD_DELAY + 5, render=True)
+    ground = g.shades()[112:136].copy()
     g.hold("start")
     g.tick(1, render=True)
     g.release("start")
     g.tick(1, render=True)
     assert g.state() == cfg.STATE_PLAY
+    # the panda is back on its feet in the new run's first frame
+    floor = cfg.GROUND_Y - 16
+    panda = [(y, x) for (y, x, t, a) in g.oam()[cfg.OAM_PANDA:cfg.OAM_PANDA + 4]]
+    assert min(y for y, _ in panda) == floor and min(x for _, x in panda) == cfg.PANDA_X, panda
     keep = np.ones(160, dtype=bool)
     keep[24:56] = False                    # the panda
     for i in range(4):
         wscx = g.u8("world_scx")
         g.tick(1, render=True)
         sh = g.shades()
+        if i == 0:
+            assert np.array_equal(sh[112:136], ground), "the ground moved when the run restarted"
+            sky = render_band(g, range(floor, floor + 16), wscx, 0)[:, 32:48]
+            assert (sh[floor:floor + 16, 32:48] != sky).any(), "no panda on the new run's first frame"
         # The clearing runs on past VBlank into this frame, so compare with
         # the map as it is after the frame: it must have been finished
         # before the beam reached the rows it touches.

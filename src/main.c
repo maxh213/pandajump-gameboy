@@ -61,6 +61,7 @@ static void start_run(void) {
     hud_messages_clear();
     world_start_run(from_title);
     player_reset();
+    player_draw();                /* back on its feet in the new run's first frame */
     score = 0;
     ramp_count = 0;
     hud_score(0);

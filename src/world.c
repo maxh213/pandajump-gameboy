@@ -34,13 +34,18 @@ static uint8_t isr_world_scx;     /* latched copies used by the LCD handler */
 static uint8_t isr_sky_scx;
 static uint8_t isr_sky_bob;
 
+static uint8_t logo_row = 4;      /* next title logo row to replace; 4 = done */
+
 static void vbl_isr(void) {
     SCX_REG = 0;                  /* HUD band: lines 0-15 don't scroll */
     SCY_REG = 0;
     LYC_REG = SKY_LYC;
     isr_world_scx = world_scx;
     isr_sky_scx = sky_scx;
-    isr_sky_bob = sky_bob;
+    /* While the logo is being replaced (a row per frame), show map rows
+       6-9 in the sky band instead: always plain sky, so the wipe is never
+       seen half done. */
+    isr_sky_bob = (logo_row < 4) ? 32 : sky_bob;
 }
 
 /* Runs at the start of line 15 and line 47. Both lines are plain sky on
@@ -63,9 +68,9 @@ static void lcd_isr(void) {
 /* ---- Queued tile writes --------------------------------------------------
    Map changes are prepared during the frame and written right after the
    next vsync, in the VBlank that also latches the new scroll values, so a
-   frame never shows half an update. New columns are off-screen anyway;
-   the jobs at the start of a run are sized to finish before the beam
-   reaches the rows they touch. */
+   frame never shows half an update. New columns are off-screen anyway.
+   The jobs at the start of a run are kept small: at most 8 old box
+   columns to clear (see world_start_run) and one logo row per frame. */
 #define NO_COLUMN 0xFF
 #define CLOUD_ROW 3                  /* clouds use map rows 3-4 (see below) */
 
@@ -80,15 +85,16 @@ static uint8_t box_col = NO_COLUMN;  /* map column to write, rows 10-13 */
 static uint8_t box_tiles[4];
 static uint8_t sky_col = NO_COLUMN;  /* map column to write, rows 2-5 */
 static uint8_t sky_tiles[4];
-static uint8_t clear_cols[4];        /* bit per map column: old boxes to erase */
-static uint8_t logo_row = 4;         /* next logo row to replace; 4 = done */
+#define CLEAR_SPAN 22                /* map columns a new run shows before it rewrites them */
+static uint8_t clear_list[CLEAR_SPAN];  /* map columns with old boxes to erase */
+static uint8_t clear_n;
 
 static const uint8_t empty_column[4] = { T_SKY, T_SKY, T_SKY, T_SKY };
 
 /* What replaces the title logo (map columns 1-18, rows 2-5) when a run
    starts: sky with two clouds, at columns 3-6 and 13-16 of rows 3-4
    (CLOUD_ROW). All 72 tiles don't fit in one VBlank, so it goes one row
-   per frame, top to bottom: a quick wipe instead of a torn frame. */
+   per frame over 4 frames, while the sky band shows plain sky (vbl_isr). */
 #define S_  T_SKY
 #define CT  T_CLOUD_TOP
 #define CB  T_CLOUD_BOT
@@ -103,22 +109,28 @@ static const uint8_t run_sky[18 * 4] = {
 #undef CB
 static const uint8_t *logo_src;      /* next row of run_sky to write */
 
-void world_vram(void) {
-    uint8_t c;
+/* Sky in map rows 10-13 of a column: a leaner set_bkg_tiles(c, 10, 1, 4),
+   since up to 8 of these run after VBlank has ended. Like GBDK's own
+   copy loop it waits for a mode in which VRAM can be written before each
+   byte (the interrupt handlers return in such a mode, too). */
+static void clear_box_column(uint8_t c) {
+    uint8_t *p = (uint8_t *)0x9800 + 10 * 32 + c;
+    uint8_t i;
 
+    for (i = 0; i < 4; i++) {
+        while (STAT_REG & STATF_BUSY) {}
+        *p = T_SKY;
+        p += 32;
+    }
+}
+
+void world_vram(void) {
     if (logo_row < 4) {
         set_bkg_tiles(1, 2 + logo_row, 18, 1, logo_src);
         logo_src += 18;
         logo_row++;
     }
-    if (clear_cols[0] | clear_cols[1] | clear_cols[2] | clear_cols[3]) {
-        for (c = 0; c < 32; c++) {
-            if (clear_cols[c >> 3] & (uint8_t)(1 << (c & 7))) {
-                set_bkg_tiles(c, 10, 1, 4, empty_column);
-            }
-        }
-        clear_cols[0] = clear_cols[1] = clear_cols[2] = clear_cols[3] = 0;
-    }
+    while (clear_n) clear_box_column(clear_list[--clear_n]);
     if (box_col != NO_COLUMN) {
         set_bkg_tiles(box_col, 10, 1, 4, box_tiles);
         box_col = NO_COLUMN;
@@ -359,12 +371,27 @@ void world_title(void) {
 
 void world_start_run(uint8_t from_title) {
     uint8_t c;
+    uint8_t first;
 
-    /* Remove the last run's boxes (col_height says where they are). The
-       tiles go at the next vsync, together with the scroll reset. */
+    /* The ground repeats every 16 px, so starting the run at world_x & 15
+       keeps it exactly where it was: no jump in the grass. */
+    world_x &= 15;
+    world_sub = 0;
+    world_scx = (uint8_t)world_x;
+    world_step = 0;
+    gen_tile = world_x >> 3;
+
+    /* Remove the last run's boxes (col_height says where they are). Map
+       columns gen_tile .. gen_tile + 21 can be seen before the generator
+       gets to them (it writes gen_tile + 22 on), so old boxes there are
+       erased at the next vsync, together with the scroll change; boxes in
+       the other 10 columns get overwritten before they scroll into view.
+       Obstacles are at least 14 tiles apart, so that's at most 8 columns. */
+    first = (uint8_t)gen_tile;
+    clear_n = 0;
     for (c = 0; c < 32; c++) {
         if (col_height[c]) {
-            clear_cols[c >> 3] |= (uint8_t)(1 << (c & 7));
+            if ((uint8_t)((c - first) & 31) < CLEAR_SPAN) clear_list[clear_n++] = c;
             col_height[c] = 0;
         }
     }
@@ -381,17 +408,12 @@ void world_start_run(uint8_t from_title) {
         cloud_gap = 2 + (rand() & 3);
     }
 
-    world_x = 0;
-    world_sub = 0;
-    world_scx = 0;
-    world_step = 0;
     world_speed = SPEED_BASE;
     spacing = SPACING_BASE;
     spacing_rand = SPACING_RAND;
     double_chance = DOUBLE_CHANCE;
     tall_chance = TALL_CHANCE;
     late_count = 0;
-    gen_tile = 0;
     gen_on = 1;
     gen_first = 1;
     gen_gap = FIRST_GAP;

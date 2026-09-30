@@ -69,7 +69,10 @@ that depends on it.
 - BG tiles 128–255: the title logo (`art/title_logo.png`, **144×32 px**,
   converted with `-map -tile_origin 128`), loaded for the title screen, at
   most 128 unique tiles. The title screen draws it in the sky band (map rows
-  2–5, columns 1–18) with the sky band's scroll held at 0.
+  2–5, columns 1–18) with the sky band's scroll held at 0. When a run
+  starts it is replaced by sky and clouds one map row per frame; for those
+  4 frames the VBlank handler gives the sky band `SCY=32`, so it shows map
+  rows 6–9 (plain sky) and the wipe is never seen half done.
 
 ### `art/bg_tiles.png` — 128×64 px, 16×8 tiles, index = row×16 + col
 
@@ -171,9 +174,13 @@ lines; the tests parse them.
   exactly a jump pressed on its first frame on the ground. Otherwise the
   press is dropped.
 - Scroll: `world_x` advances by the current speed (starts at `SPEED_BASE`
-  px/frame) each frame; `world_scx` is its low byte. When `world_x >> 3`
-  changes, the column `(world_x >> 3) + 21` (mod 32), which is off-screen
-  to the right, is generated and written to the map (rows 10–13 only).
+  px/frame, with the fraction kept in `world_sub`) each frame; `world_scx`
+  is its low byte. A run starts at `world_x & 15` of the title or the last
+  run (the ground repeats every 16 px, so it stays exactly where it was),
+  with `world_sub` 0. When `world_x >> 3` changes, the column
+  `(world_x >> 3) + 21` (mod 32), which is off-screen to the right, is
+  generated and written to the map (rows 10–13 only); the first one is
+  `(start >> 3) + 22`.
 - Obstacles: a column is 2 tiles wide with 1 or 2 boxes (2 boxes with
   probability `TALL_CHANCE`/256, one half; a run's first obstacle is
   always 1 box). Once the score is above `DOUBLE_SCORE` (10), `DOUBLE_CHANCE`
@@ -196,7 +203,9 @@ lines; the tests parse them.
   `SPACING_MIN` nor the speed above `SPEED_MAX`.
 - `col_height[32]` mirrors the box height in pixels (0, 16 or 32) of each
   map column, so collision never reads VRAM: the hitbox is checked against
-  the columns under its left and right edges.
+  the columns under its left and right edges. (Right after a restart the
+  10 map columns the generator reaches first may still show the last
+  run's boxes; they are rewritten before they scroll into view.)
 - Score: +1 when an obstacle's right edge passes the panda's left edge
   (single or double column counts once). High score is updated and saved
   when the run ends.
@@ -261,7 +270,8 @@ Plain (non-`static`) globals, found through `build/pandajump.sym`
 `game_state`, `score`, `high_score`, `panda_y` (8.8, top of the sprite in
 screen pixels), `panda_vy` (8.8, positive is down), `panda_on_ground`,
 `jumps_used`, `jump_buffer` (frames a kept press has left, 0 if none),
-`world_x` (`uint16_t`, whole pixels scrolled this run), `world_sub`
+`world_x` (`uint16_t`, whole pixels scrolled, from 0–15 at the start of a
+run, see "Scroll"), `world_sub`
 (`uint8_t`, the fraction of a pixel in 1/256ths), `world_scx`,
 `col_height[32]`, `frame_count` (`uint8_t`, +1 per frame),
 `debug_invincible` (`uint8_t`, 0 in normal play; when a test sets it,
@@ -272,7 +282,8 @@ it starts (the game reads the joypad right after VBlank and runs its logic
 from line 1), except that a kept press acts on the landing frame; each
 state change sets `game_state` last; BG text appears one frame after a
 state change; the title logo turns into sky over 4 frames when a run
-starts.
+starts (while the sky band shows plain sky); the panda is drawn standing
+on the first frame of every run.
 
 ## Web player
 
