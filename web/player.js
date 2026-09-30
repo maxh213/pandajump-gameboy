@@ -717,11 +717,17 @@
       }
     }
 
-    // Another tab saved. Carrying on here could overwrite a better score
-    // with this tab's older one, so stop and offer a reload.
+    // Another tab saved. If its save differs from the cartridge RAM here,
+    // carrying on could overwrite a better score with this tab's older one,
+    // so stop and offer a reload. The same save (two tabs opened together,
+    // each writing the blank save block at boot) is no conflict.
     onStorage(event) {
       if (event.key !== KEY_SAVE || event.newValue === null || event.newValue === this.lastSaved) return;
       if (this.state === 'loading' || this.state === 'stopped') return;
+      if (event.newValue === bytesToBase64(this.gb.readExtRam())) {
+        this.lastSaved = event.newValue;
+        return;
+      }
       this.saveBlocked = true;
       this.stop();
       this.showMessage(
