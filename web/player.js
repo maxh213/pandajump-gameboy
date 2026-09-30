@@ -304,15 +304,69 @@
 
   // ------------------------------------------------------------ screen
 
+  // Draws the Game Boy's frames on the page's canvas so that every Game Boy
+  // pixel covers exactly k x k device pixels. player.js sizes the screen to
+  // 160k x 144k device pixels, and the browser reports the device pixels the
+  // canvas really covers (ResizeObserver's device-pixel-content-box):
+  //   - exactly 160k x 144k: the canvas stays 160 x 144 and the browser's
+  //     own pixelated upscale, by exactly k, does the rest (cheapest);
+  //   - a device pixel more or less (the browser rounded the layout): the
+  //     canvas takes one pixel per device pixel, and the frame is drawn into
+  //     it k times bigger, the spare edge filled with the nearest colours;
+  //   - not reported (Safari), or not believable (Chrome's emulated pixel
+  //     ratios in DevTools report CSS pixels): 160 x 144, scaled by the
+  //     browser, which is as good as it can be there.
   class Screen {
     constructor(canvas) {
+      this.canvas = canvas;
       this.ctx = canvas.getContext('2d', { alpha: false });
-      this.image = this.ctx.createImageData(SCREEN_W, SCREEN_H);
+      // The frame at the Game Boy's own 160 x 144, copied up from here.
+      this.frame = document.createElement('canvas');
+      this.frame.width = SCREEN_W;
+      this.frame.height = SCREEN_H;
+      this.frameCtx = this.frame.getContext('2d', { alpha: false });
+      this.image = this.frameCtx.createImageData(SCREEN_W, SCREEN_H);
       this.pixels = new Uint32Array(this.image.data.buffer);
       // The last frame as shade-code low bits (3 is the lightest shade), kept
       // so a palette change can redraw it, even while paused.
       this.shades = new Uint8Array(SCREEN_W * SCREEN_H).fill(3);
       this.colors = new Uint32Array(4);
+      this.watchSize();
+    }
+
+    watchSize() {
+      if (typeof ResizeObserver !== 'function') return;
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[entries.length - 1];
+        const device = entry.devicePixelContentBoxSize && entry.devicePixelContentBoxSize[0];
+        const css = entry.contentBoxSize && entry.contentBoxSize[0];
+        const dpr = window.devicePixelRatio || 1;
+        const believable = Boolean(device && css) &&
+          Math.abs(device.inlineSize - css.inlineSize * dpr) < 2 &&
+          Math.abs(device.blockSize - css.blockSize * dpr) < 2;
+        this.fit(believable ? device.inlineSize : 0, believable ? device.blockSize : 0);
+      });
+      try {
+        observer.observe(this.canvas, { box: 'device-pixel-content-box' });
+      } catch (err) {
+        observer.observe(this.canvas); // no device pixels here
+      }
+    }
+
+    // Sizes the canvas for a box of width x height device pixels (0: unknown).
+    fit(width, height) {
+      let w = SCREEN_W;
+      let h = SCREEN_H;
+      const k = width / SCREEN_W;
+      if (width > 0 && height > 0 && !(Number.isInteger(k) && height === SCREEN_H * k)) {
+        w = width;
+        h = height;
+      }
+      const canvas = this.canvas;
+      if (canvas.width === w && canvas.height === h) return;
+      canvas.width = w;
+      canvas.height = h;
+      this.draw();
     }
 
     setPalette(colors) {
@@ -330,7 +384,24 @@
     paint() {
       const { pixels, shades, colors } = this;
       for (let i = 0; i < pixels.length; i++) pixels[i] = colors[shades[i]];
-      this.ctx.putImageData(this.image, 0, 0);
+      this.frameCtx.putImageData(this.image, 0, 0);
+      this.draw();
+    }
+
+    // Copies the frame onto the canvas at the largest whole scale that fits,
+    // centred. On a canvas a device pixel too big, the frame stretched to the
+    // whole canvas first fills the spare edge with the picture's edge colours;
+    // on one a device pixel too small, the outermost device pixel is cut.
+    draw() {
+      const { canvas, ctx, frame } = this;
+      const width = canvas.width;
+      const height = canvas.height;
+      const k = Math.max(1, Math.min(Math.floor((width + 1) / SCREEN_W), Math.floor((height + 1) / SCREEN_H)));
+      const w = SCREEN_W * k;
+      const h = SCREEN_H * k;
+      ctx.imageSmoothingEnabled = false;
+      if (w !== width || h !== height) ctx.drawImage(frame, 0, 0, width, height);
+      ctx.drawImage(frame, Math.floor((width - w) / 2), Math.floor((height - h) / 2), w, h);
     }
   }
 
@@ -1095,8 +1166,10 @@
       let scale = Math.max(Math.min(byWidth, byHeight), Math.min(byWidth, Math.round(2 * dpr)));
       scale = Math.max(1, Math.min(scale, Math.floor(MAX_CSS_SCALE * dpr)));
 
-      this.device.style.setProperty('--screen-w', (SCREEN_W * scale) / dpr + 'px');
-      this.device.style.setProperty('--screen-h', (SCREEN_H * scale) / dpr + 'px');
+      // A 256th of a device pixel more, so float rounding in the layout
+      // never leaves the screen a device pixel short of 160k x 144k.
+      this.device.style.setProperty('--screen-w', (SCREEN_W * scale + 1 / 256) / dpr + 'px');
+      this.device.style.setProperty('--screen-h', (SCREEN_H * scale + 1 / 256) / dpr + 'px');
     }
   }
 
