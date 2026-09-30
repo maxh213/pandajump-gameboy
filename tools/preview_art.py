@@ -15,8 +15,8 @@ Each image is written once per palette: grey DMG shades, the green
 palette from the contract, and the darker "pea soup" green of an original
 DMG screen (where shades 0 and 1 are hard to tell apart, a good stress test).
 
-  python3 tools/preview_art.py                 # writes build/preview/*.png
-  python3 tools/preview_art.py --out DIR --scale 3
+  tools/preview_art.py                 # writes build/preview/*.png
+  tools/preview_art.py --out DIR --scale 3
 """
 import argparse
 import re
@@ -69,6 +69,16 @@ class Canvas:
                 if 0 <= py < self.h:
                     self.px[py][tx * 8 + x] = BGP[tiles[sx + x, sy + y]]
 
+    def sprite_tile(self, tiles, index, x0, y0):
+        """A BG tile drawn as an 8x8 sprite (OBP0, colour 0 transparent), as
+        the game does for sprite text such as the title's PRESS START."""
+        sx, sy = (index % 16) * 8, (index // 16) * 8
+        for y in range(8):
+            for x in range(8):
+                shade = OBP0[tiles[sx + x, sy + y]]
+                if shade is not None and 0 <= x0 + x < self.w and 0 <= y0 + y < self.h:
+                    self.px[y0 + y][x0 + x] = shade
+
     def sprite(self, sheet, frame, fw, fh, x0, y0):
         for y in range(fh):
             for x in range(fw):
@@ -119,10 +129,13 @@ def window_hud(c, tiles, t, text):
         c.tile(tiles, row[tx] if tx < len(row) else t["T_HUD_DARK"], tx, 17)
 
 
-def cloud(c, tiles, t, tx, ty, yoff=0):
-    for i in range(4):
-        c.tile(tiles, t["T_CLOUD_TOP"] + i, tx + i, ty, yoff)
-        c.tile(tiles, t["T_CLOUD_BOT"] + i, tx + i, ty + 1, yoff)
+def cloud(c, tiles, t, tx, ty, yoff=0, small=False):
+    """The big 32x16 cloud, or the small 24x16 one."""
+    top, bot, n = ((t["T_CLOUD2_TOP"], t["T_CLOUD2_BOT"], 3) if small
+                   else (t["T_CLOUD_TOP"], t["T_CLOUD_BOT"], 4))
+    for i in range(n):
+        c.tile(tiles, top + i, tx + i, ty, yoff)
+        c.tile(tiles, bot + i, tx + i, ty + 1, yoff)
 
 
 def box(c, tiles, t, tx, ty, variant=False):
@@ -134,13 +147,15 @@ def box(c, tiles, t, tx, ty, variant=False):
 
 
 def game_scene(tiles, panda, t, frame=1):
-    """A mid-run screen: HUD score, clouds, a 1-box column, a double 2-box
-    column, grass, ground, the panda, and the window HUD."""
+    """A mid-run screen: HUD score, a big and a small cloud, a 1-box column,
+    a double 2-box column, grass, ground, the panda, and the window HUD."""
     c = Canvas()
     for tx, ch in enumerate(text_tiles(t, "12")):
         c.tile(tiles, ch, 1 + tx, 1)
-    cloud(c, tiles, t, 2, 3, yoff=2)       # sky band, bobbed down 2 px
-    cloud(c, tiles, t, 12, 2, yoff=2)
+    # Clouds sit on map rows 3-4; the bob (SCY 0-4) raises the sky band's
+    # content, here by 2 px.
+    cloud(c, tiles, t, 2, 3, yoff=-2)
+    cloud(c, tiles, t, 12, 3, yoff=-2, small=True)
     box(c, tiles, t, 9, 12)
     for tx in (14, 16):                    # double column, 2 boxes high
         box(c, tiles, t, tx, 10, variant=True)
@@ -153,18 +168,23 @@ def game_scene(tiles, panda, t, frame=1):
 
 def title_scene(tiles, logo, panda, t):
     """The title screen: logo in the sky band (map rows 2-5, columns 1-18),
-    PRESS START, the running panda and the high score."""
+    PRESS START in sprite text (centred, y = 64, as src/hud.c draws it),
+    the panda running at PANDA_X and the high score."""
     c = Canvas()
     lw, lh = logo.size
     lpx = logo.load()
     for y in range(lh):
         for x in range(lw):
             c.px[16 + y][8 + x] = BGP[lpx[x, y]]
-    for tx, ch in enumerate(text_tiles(t, "PRESS START")):
-        c.tile(tiles, ch, 4 + tx, 9)
+    prompt = "PRESS START"
+    x = (160 - len(prompt) * 8) // 2
+    for ch, tile in zip(prompt, text_tiles(t, prompt)):
+        if ch != " ":
+            c.sprite_tile(tiles, tile, x, 64)
+        x += 8
     ground(c, tiles, t)
     window_hud(c, tiles, t, "HI 0042")
-    c.sprite(panda, 0, 16, 16, 72, GROUND_Y - 16)
+    c.sprite(panda, 0, 16, 16, PANDA_X, GROUND_Y - 16)
     return c
 
 
@@ -179,7 +199,7 @@ def game_over_scene(tiles, panda, fx, t):
             c.tile(tiles, ch, (20 - len(text)) // 2 + tx, row)
     box(c, tiles, t, 6, 12)
     ground(c, tiles, t)
-    window_hud(c, tiles, t, "HI 0017  NEW!")
+    window_hud(c, tiles, t, "HI 0017")
     c.sprite(panda, 9, 16, 16, PANDA_X + 8, GROUND_Y - 34)
     c.sprite(fx, 2, 8, 8, PANDA_X - 8, GROUND_Y - 8)
     return c
