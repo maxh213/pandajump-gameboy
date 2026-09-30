@@ -91,6 +91,11 @@ def check_outlined(rows, what):
 # art/panda.png: ten 16x16 frames, facing right. The metasprite is placed by
 # its top-left corner; the feet rest on row 15 in the running frames, so the
 # game draws the sprite at y = GROUND_Y - 16 when the panda is on the ground.
+#
+# The face, like the original's: two solid black eye patches that droop
+# down and outward (the near one with a white glint at its upper inner
+# side, the far one running into the head's outline) and a black nose
+# below between them. The dead pose (frame 9) has X eyes instead.
 
 PANDA = [
     # 0: run, contact. Legs spread, near arm swung back. Body down 1 px.
@@ -101,9 +106,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ..#############.
     .####oooooo+#...
@@ -119,9 +124,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ....###########.
     ....#o##oooo#...
@@ -138,9 +143,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ....###########.
     ....#ooooooo####
@@ -158,9 +163,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ....###########.
     ....#ooooooo####
@@ -176,9 +181,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ....###########.
     ....#o##oooo#...
@@ -195,9 +200,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ..#############.
     .####oooooo+#...
@@ -214,9 +219,9 @@ PANDA = [
     ...###oooooo###.
     ##.##ooooooooo##
     ##.#ooooooooooo#
-    ##.#ooooo##ooo##
-    .#.#oooo#o#oo#o#
-    .#.#oooo###oo###
+    ##.#ooooo##oo###
+    .#.#ooo##o#oo###
+    .#.#ooo##ooooo##
     .##.#+ooooo#oo#.
     ..#############.
     ....#ooooooo#...
@@ -234,9 +239,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ...############.
     ..#oooooo####...
@@ -246,16 +251,17 @@ PANDA = [
     ....########....
     ................
     """,
-    # 8: falling. Arm straight up, legs dangling apart.
+    # 8: falling. Arm raised beside the head (a 2 px wide paw that stops
+    # below the ears, so it doesn't read as a stick), legs dangling apart.
     """
-    ##..##......##..
-    ##.############.
-    .#.###oooooo###.
+    ....##......##..
+    ...############.
+    ...###oooooo###.
     .#.##ooooooooo##
-    .#.#ooooooooooo#
-    .#.#ooooo##ooo##
-    .#.#oooo#o#oo#o#
-    .#.#oooo###oo###
+    ##.#ooooooooooo#
+    ##.#ooooo##oo###
+    ##.#ooo##o#oo###
+    ##.#ooo##ooooo##
     .##.#+ooooo#oo#.
     ..#############.
     ....#ooooooo#...
