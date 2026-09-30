@@ -77,7 +77,7 @@ def air_death(g, cfg):
 def test_messages_wait_until_the_panda_has_sunk(make_game, cfg, where):
     """GAME OVER (sprites at OVER_TEXT_Y) and the score (BG row
     OVER_SCORE_ROW) appear on the frame the dead panda has sunk out of
-    sight, never while it is still on screen, centred, a blank line apart."""
+    sight, never while it is still on screen, centred, with sky between them."""
     g = make_game()
     if where == "ground":
         g.start_run()
@@ -101,9 +101,16 @@ def test_messages_wait_until_the_panda_has_sunk(make_game, cfg, where):
     x = find_text(g, cfg.OVER_SCORE_ROW, score_text, scx)
     assert x is not None, "the score should be in the same frame's VBlank writes"
     assert abs(x + 4 * len(score_text) - 80) <= 4, "the score is not centred"
-    assert cfg.OVER_SCORE_ROW * 8 - (cfg.OVER_TEXT_Y + 8) >= 8, "no blank line under GAME OVER"
-    assert cfg.OVER_PROMPT_Y - (cfg.OVER_SCORE_ROW * 8 + 8) >= 8, "no blank line under the score"
-    assert cfg.OVER_TEXT_Y >= 40 and cfg.OVER_PROMPT_Y + 8 <= 80, "text over clouds or boxes"
+    # The glyphs are 7 px tall (the font's bottom row is empty). Between the
+    # lines, and between PRESS START and the top of a 2-box column (y 80,
+    # and the column the panda ran into is always under the text), there
+    # must be clear sky; the clouds (map rows 3-4) end above y 40.
+    ink = 7
+    score_y = cfg.OVER_SCORE_ROW * 8
+    assert score_y - (cfg.OVER_TEXT_Y + ink) >= 4, "GAME OVER crowds the score"
+    assert cfg.OVER_PROMPT_Y - (score_y + ink) >= 4, "the score crowds PRESS START"
+    assert 80 - (cfg.OVER_PROMPT_Y + ink) >= 4, "PRESS START sits on a 2-box column"
+    assert cfg.OVER_TEXT_Y >= 40, "GAME OVER over the clouds"
 
 
 def test_press_start_comes_prompt_delay_frames_later_and_blinks(game, cfg):

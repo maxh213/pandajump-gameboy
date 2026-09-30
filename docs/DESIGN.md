@@ -226,14 +226,17 @@ Messages (`SCORE` / `NEW BEST!`, `PAUSED`; one at a time) are BG text in
 world rows 7–9, written only while the world is frozen. Row 6 stays plain
 sky because the bobbing sky band reads into it.
 
-The game-over screen (constants in `src/config.h`), with a blank line
-between each line of text:
+The game-over screen (constants in `src/config.h`), lines 12 px apart:
 
 | y | Text | How |
 |---|------|-----|
-| 40 (`OVER_TEXT_Y`) | `GAME OVER` | sprites, in the sky band's map row 5, which is always plain sky (clouds use rows 3–4) |
+| 44 (`OVER_TEXT_Y`) | `GAME OVER` | sprites, over plain sky (map rows 5–6; the clouds in rows 3–4 end by y 37) |
 | 56 (row `OVER_SCORE_ROW` 7) | `SCORE 12` or `NEW BEST! 12` | BG text, centred to the nearest column |
-| 72 (`OVER_PROMPT_Y`) | `PRESS START` | sprites, blinking |
+| 68 (`OVER_PROMPT_Y`) | `PRESS START` | sprites, blinking |
+
+The glyphs are 7 px tall, so that leaves 5 px of sky between the lines
+and 5 px above y 80, the top of a 2-box column: the column the panda ran
+into always stands right under the text.
 
 `GAME OVER` and the score appear together on the frame the dead panda has
 sunk out of sight (its death hop would cover them before that), 43–54
