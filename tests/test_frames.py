@@ -7,7 +7,7 @@ PyBoy's frame starts at line 0; the position inside it is measured in
 clock cycles (456 per line) from the start of the tick."""
 import pytest
 
-from gb import ram_image, sram_block
+from gb import save_ram, sram_slot
 
 LINE = 456
 
@@ -46,7 +46,7 @@ def session(g, cfg, step, press):
     assert g.state() == cfg.STATE_PLAY
     step(10)
     press("a")
-    step(10)
+    step(20)
     press("a")
     step(40)
     press("start")
@@ -64,18 +64,18 @@ def session(g, cfg, step, press):
     while g.state() == cfg.STATE_PLAY:
         step()
     assert g.u16("high_score") == 45
-    step(cfg.DEAD_DELAY + 40)
+    step(200)                          # the messages, then PRESS START
     press("a")
     assert g.state() == cfg.STATE_PLAY
     while g.state() == cfg.STATE_PLAY:
         step()
-    step(cfg.DEAD_DELAY + 5)
+    step(200)
     press("start")
     step(200)
 
 
 def run_session(make_game, cfg, hooks):
-    g = make_game(ram=ram_image(sram_block(1)), boot=False)
+    g = make_game(ram=save_ram(sram_slot(1)), boot=False)
     t = Timed(g)
     for h in hooks:
         t.hook(h)
@@ -108,8 +108,6 @@ def test_one_frame_count_per_frame_and_vsync_in_time(make_game, cfg):
     assert not late, f"logic still running at VBlank (name, frame, line, LY, state): {late[:10]}"
 
 
-@pytest.mark.xfail(strict=True, reason="BUG logic-starts-before-line-1: the wait loop in main() "
-                   "reads LY twice, so it can leave during line 153/0 instead of line 1")
 def test_logic_starts_on_line_1_or_later(make_game, cfg):
     """docs/DESIGN.md: "the game reads the joypad right after VBlank and runs
     its logic from line 1". The first thing each state's logic calls

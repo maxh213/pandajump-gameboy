@@ -1,7 +1,7 @@
 """The world map (docs/DESIGN.md "Screen layout", "Tiles and VRAM"): boxes
 are BG tiles mirrored by col_height, and the ground and sky rows never
 change during a run."""
-from gb import unwrap16
+from gb import BG_MAP, unwrap16
 from model import WorldMap
 
 
@@ -23,7 +23,7 @@ def test_map_mirrors_col_height(make_game, cfg):
     g = make_game()
     g.start_run(invincible=True)
     wmap = WorldMap()
-    raw, x = 0, 0
+    raw = x = g.u16("world_x")
     ground = [[cfg.T_GRASS_0, cfg.T_GRASS_1], [cfg.T_GROUND_A0, cfg.T_GROUND_A1],
               [cfg.T_GROUND_B0, cfg.T_GROUND_B1], [cfg.T_GROUND_B0, cfg.T_GROUND_B1]]
     checked = 0
@@ -53,6 +53,8 @@ def test_map_mirrors_col_height(make_game, cfg):
             assert g.bg_row(r) == pair * 16, f"ground row {r} changed"
         for r in range(6, 10):
             assert g.bg_row(r) == [cfg.T_SKY] * 32, f"row {r} should stay sky during a run"
+        # rows 18-31 are never written: they hide the logo wipe
+        assert set(g.pb.memory[BG_MAP + 18 * 32:BG_MAP + 32 * 32]) == {cfg.T_SKY}, "map rows 18-31 changed"
     assert g.u16("score") > cfg.DOUBLE_SCORE + 5
     assert any(o.width == 4 for o in wmap.obstacles())
     assert checked > 100000

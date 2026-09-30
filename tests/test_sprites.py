@@ -34,7 +34,7 @@ def test_panda_frames_follow_the_state(make_game, cfg):
     g.start_run(invincible=True)
     seen = []
     for n in range(260):
-        if n in (20, 26, 120, 200):     # jump, double jump, jump, jump
+        if n in (20, 40, 120, 200):     # jump, double jump, jump, jump
             g.hold("a")
         else:
             g.release("a")
@@ -50,20 +50,34 @@ def test_panda_frames_follow_the_state(make_game, cfg):
 
 
 def test_run_cycle_speed(make_game, cfg):
-    """RUN_ANIM_STEP px of travel per run frame: all 6 run frames in order,
-    each held for RUN_ANIM_STEP / world_speed frames."""
+    """RUN_ANIM_STEP (8.8 px) of travel per run frame: all 6 run frames in
+    order, the next one exactly when the travel added up at world_speed per
+    frame passes another RUN_ANIM_STEP (from whatever remainder the title
+    left)."""
     frames = metasprites("panda")
     g = make_game()
     g.start_run(invincible=True)
+    speed = g.u16("world_speed")
     shown = []
     for _ in range(80):
         g.tick()
         shown.append(panda_frame(g, cfg, frames))
-    per = cfg.RUN_ANIM_STEP // g.u16("world_speed")
+    assert g.u16("world_speed") == speed
     changes = [i for i in range(1, len(shown)) if shown[i] != shown[i - 1]]
-    assert all(b - a == per for a, b in zip(changes, changes[1:])), f"run frames change at {changes}"
     for i in changes:
         assert shown[i] == (shown[i - 1] + 1) % 6
+
+    def predicted(acc):
+        out = []
+        for i in range(1, len(shown)):
+            acc += speed
+            if acc >= cfg.RUN_ANIM_STEP:
+                acc -= cfg.RUN_ANIM_STEP
+                out.append(i)
+        return out
+
+    assert any(predicted(a) == changes for a in range(cfg.RUN_ANIM_STEP)), f"run frames change at {changes}"
+    assert len(changes) >= len(shown) * speed // cfg.RUN_ANIM_STEP - 1
 
 
 def test_dead_pose_then_behind_ground(make_game, cfg):
@@ -116,11 +130,17 @@ def test_dust_puff_on_double_jump_and_landing(make_game, cfg):
     assert y0 + 8 <= shown[0][0] <= y0 + 16, "the puff starts under the panda"
     assert cfg.PANDA_X <= shown[0][1] <= cfg.PANDA_X + 8
     assert puffs[-1] is None, "the puff should be gone after its 4 frames"
-    # landing
-    g.run_until(lambda g: g.u8("panda_on_ground"), 200)
+    # landing: the puff starts at the heel, where it isn't behind the legs
+    g.run_until(lambda g: g.u8("panda_on_ground"), 200, render=True)
     landing = fx_sprite(g, cfg)
     assert landing is not None and landing[2] in fx_tiles, "no dust puff on landing"
     assert landing[0] == cfg.GROUND_Y - 8
+    # made at PANDA_X - 4, and already moved with the ground that frame
+    assert landing[1] == cfg.PANDA_X - 4 - g.u8("world_step")
+    g.tick(1, render=True)                # the landing frame on screen
+    y = cfg.GROUND_Y - 8
+    assert (g.shades()[y:y + 8, cfg.PANDA_X - 4:cfg.PANDA_X] != 0).sum() >= 3, \
+        "the landing puff's first frame is not visible left of the panda"
     xs = []
     for _ in range(8):
         g.tick()
@@ -152,21 +172,24 @@ def test_sprite_tiles_and_limits(make_game, cfg):
                 used = -8 < y < 144 and -8 < x < 160
                 if i >= cfg.OAM_USED:
                     assert not used, f"OAM {i} is in use"
-                if cfg.OAM_TEXT <= i < cfg.OAM_TEXT_END and not text_allowed:
-                    assert not used, f"PRESS START sprite {i} left on screen"
+                if cfg.OAM_TEXT <= i < cfg.OAM_OVER_END and not text_allowed:
+                    assert not used, f"text sprite {i} left on screen"
 
     check(80, True)                   # title with PRESS START
     g.start_run(invincible=True)
     check(20, False)
     g.tap("a")
-    check(10, False)
+    check(20, False)
     g.tap("a")                        # double jump: dust puff
     check(80, False)                  # landing: dust puff
     g.write8("debug_invincible", 0)
     g.run_until(lambda g: g.state() == cfg.STATE_DEAD, 2000)
-    check(150, False)                 # death pose and fall; PRESS START is BG text here
+    check(180, True)                  # death pose and fall, GAME OVER, PRESS START
     assert any(cfg.S_FX_BASE <= t < cfg.S_TEXT_BASE for t in seen), "the dust puff never showed"
     assert any(t >= cfg.S_TEXT_BASE for t in seen), "PRESS START never showed"
+    g.tick(cfg.BLINK_PERIOD)
+    g.tap("start")
+    check(20, False)                  # the new run: no text sprites left
 
 
 def test_panda_sprite_at_panda_x_and_panda_y(make_game, cfg):

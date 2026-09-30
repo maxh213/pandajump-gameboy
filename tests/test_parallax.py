@@ -29,79 +29,107 @@ def shifts(a, b, dxs, dys, x0=0):
     return out
 
 
+class Tracked:
+    """A run whose screen can be matched with the frame it shows: the
+    screen after tick k shows frame k-1, so this remembers world_x and the
+    number of frames played for the frame on screen. The sky band scrolls
+    by (world_speed >> CLOUD_SHIFT) per frame from 0 when a run starts from
+    the title, and the speed doesn't change before the first ramp step."""
+
+    def __init__(self, g, cfg):
+        self.g, self.cfg = g, cfg
+        self.speed = g.u16("world_speed")
+        self.played = 0                 # frames of play in RAM
+        self.shown_x = self.shown_played = None
+
+    def tick(self, n=1):
+        """n frames, the last two rendered."""
+        for i in range(n):
+            x, played = self.g.u16("world_x"), self.played
+            self.g.tick(1, render=i >= n - 2)
+            self.played += 1
+        self.shown_x, self.shown_played = x, played
+        assert self.g.u16("world_speed") == self.speed
+
+    def sky_scx(self, played=None):
+        played = self.shown_played if played is None else played
+        return (played * (self.speed >> self.cfg.CLOUD_SHIFT)) >> 8
+
+
 @pytest.fixture
 def running(make_game, cfg):
     g = make_game()
     g.start_run(invincible=True)
+    t = Tracked(g, cfg)
     # boxes on screen and the start clouds still in view
-    g.run_until(lambda g: any(g.col_height()[((g.u8("world_scx") >> 3) + c) & 31] for c in range(8, 18)),
-                2000, what="boxes on screen")
-    g.tick(2, render=True)
-    return g
+    while not any(g.col_height()[((g.u8("world_scx") >> 3) + c) & 31] for c in range(8, 18)):
+        t.tick()
+        assert t.played < 2000, "no boxes on screen"
+    t.tick(2)
+    return t
 
 
 def test_world_band_follows_world_x(running, cfg):
-    g = running
-    a = g.shades()
-    wx_a = g.u16("world_x")
-    n = 12
-    g.tick(n, render=True)
+    t = running
+    g = t.g
+    a, xa = g.shades(), t.shown_x
+    t.tick(12)
     b = g.shades()
-    moved = g.u16("world_x") - wx_a
-    assert moved == n * g.u16("world_speed") // 256
-    found = shifts(a[WORLD], b[WORLD], range(0, 16), [0], x0=56)
+    moved = t.shown_x - xa
+    assert moved in (12 * t.speed // 256, 12 * t.speed // 256 + 1)
+    found = shifts(a[WORLD], b[WORLD], range(0, 20), [0], x0=56)
     assert found == [(moved, 0)]
 
 
 def test_sky_band_moves_slower(running, cfg):
-    g = running
-    a = g.shades()
-    n = 12
-    g.tick(n, render=True)
+    t = running
+    g = t.g
+    a, xa, sa = g.shades(), t.shown_x, t.sky_scx()
+    t.tick(12)
     b = g.shades()
     assert (a[SKY] == 1).any(), "no cloud outline in the sky band"
     found = shifts(a[SKY], b[SKY], range(0, 16), range(-4, 5))
     assert len({dx for dx, _ in found}) == 1, f"ambiguous sky shift {found}"
     dx = found[0][0]
-    world = n * g.u16("world_speed") // 256
+    world = t.shown_x - xa
     assert dx < world
-    assert dx == (n * (g.u16("world_speed") >> cfg.CLOUD_SHIFT)) // 256, \
-        f"sky moved {dx} px while the world moved {world}"
+    assert dx == t.sky_scx() - sa, f"sky moved {dx} px while the world moved {world}"
 
 
 def test_bands_frame_by_frame(running, cfg):
     """Every consecutive pair of frames: the world band moves by exactly the
-    frame's world_step, the sky band by 0 or 1 px (a quarter of the world
-    speed on average), the HUD band and window not at all."""
-    g = running
+    shown frame's step of world_x, the sky band by exactly its step of the
+    sky scroll (0 or 1 px, a quarter of the world speed), the HUD band and
+    window not at all."""
+    t = running
+    g = t.g
     prev = g.shades()
-    world_steps, sky_steps = [], []
-    prev_x = g.u16("world_x")
+    world_steps, want_world, sky_steps, want_sky = [], [], [], []
     for _ in range(32):
-        g.tick(1, render=True)
+        x, sky = t.shown_x, t.sky_scx()
+        t.tick(1)
         cur = g.shades()
-        # the screen shows the previous frame's scroll
-        step = (g.u16("world_x") - prev_x) & 0xFFFF   # this frame's step
-        prev_x = g.u16("world_x")
+        want_world.append((t.shown_x - x) & 0xFFFF)
+        want_sky.append(t.sky_scx() - sky)
         found = shifts(prev[WORLD], cur[WORLD], range(0, 8), [0], x0=56)
         assert len(found) == 1, f"world band shift ambiguous or missing: {found}"
         world_steps.append(found[0][0])
-        sky = shifts(prev[SKY], cur[SKY], range(0, 4), range(-4, 5))
-        assert len({dx for dx, _ in sky}) == 1, f"sky band shift ambiguous or missing: {sky}"
-        sky_steps.append(sky[0][0])
+        found = shifts(prev[SKY], cur[SKY], range(0, 4), range(-4, 5))
+        assert len({dx for dx, _ in found}) == 1, f"sky band shift ambiguous or missing: {found}"
+        sky_steps.append(found[0][0])
         assert np.array_equal(prev[HUD], cur[HUD])
         assert np.array_equal(prev[WINDOW], cur[WINDOW])
         prev = cur
-        assert step == 1
-    assert world_steps == [1] * 32
-    assert set(sky_steps) <= {0, 1}
-    assert sum(sky_steps) == 32 * (g.u16("world_speed") >> cfg.CLOUD_SHIFT) // 256
+    assert world_steps == want_world
+    assert set(want_world) == {t.speed >> 8, (t.speed >> 8) + 1}, "the fraction should carry"
+    assert sky_steps == want_sky
+    assert set(sky_steps) == {0, 1}
 
 
 def test_sky_band_bobs_within_0_to_4(running, cfg):
     """Over a whole bob cycle the sky band's picture moves vertically by at
     most 4 lines, and does move."""
-    g = running
+    g = running.g
     base = g.shades()[SKY]
     dys = set()
     for _ in range(16):
@@ -115,7 +143,7 @@ def test_sky_band_bobs_within_0_to_4(running, cfg):
 
 
 def test_hud_and_window_are_static(running):
-    g = running
+    g = running.g
     a = g.shades()
     score = g.u16("score")
     g.tick(10, render=True)
@@ -166,8 +194,9 @@ def test_screen_matches_vram_render(make_game, cfg):
 
 
 def test_clouds_keep_coming(make_game, cfg):
-    """New clouds are written into the sky band's map (rows 3-4 only,
-    whole 4-tile clouds) as it scrolls, and rows 2 and 5 stay sky.
+    """New clouds are written into the sky band's map (rows 3-4 only, whole
+    clouds: the big 4-tile one or the small 3-tile one) as it scrolls, both
+    shapes turn up, and rows 2 and 5 stay sky.
 
     A column written in a VBlank that runs long can still be half written
     when a tick ends (it is off-screen and done early in the next frame),
@@ -175,7 +204,11 @@ def test_clouds_keep_coming(make_game, cfg):
     checked."""
     g = make_game()
     g.start_run(invincible=True)
-    tops = {cfg.T_CLOUD_TOP + i for i in range(4)}
+    shapes = {}                        # top tile -> (shape, index, bottom tile, width)
+    for i in range(4):
+        shapes[cfg.T_CLOUD_TOP + i] = ("big", i, cfg.T_CLOUD_BOT + i, 4)
+    for i in range(3):
+        shapes[cfg.T_CLOUD2_TOP + i] = ("small", i, cfg.T_CLOUD2_BOT + i, 3)
     seen = set()
     sky_pos = 0          # the sky band's 8.8 scroll, as world_clouds() advances it
     speed = g.u16("world_speed")
@@ -201,17 +234,21 @@ def test_clouds_keep_coming(make_game, cfg):
             if t == cfg.T_SKY:
                 assert b == cfg.T_SKY, f"cloud bottom without top at column {c}"
                 continue
-            assert t in tops, f"unexpected tile {t} in the cloud row"
-            i = t - cfg.T_CLOUD_TOP
-            assert b == cfg.T_CLOUD_BOT + i
+            assert t in shapes, f"unexpected tile {t} in the cloud row"
+            shape, i, bottom, width = shapes[t]
+            assert b == bottom, f"{shape} cloud column {i} has the wrong bottom tile"
             # inside the window cloud columns are in order: a cloud is only
             # cut at the window's ends (scrolled off, or still being written)
             k = window.index(c)
             if k > 0 and i > 0:
                 assert r3[window[k - 1]] == t - 1, f"broken cloud at column {c}: {r3}"
-            if k < 21 and i < 3 and window[k + 1] in stable:
-                assert r3[window[k + 1]] == t + 1, f"broken cloud at column {c}: {r3}"
+            if k > 0 and i == 0:
+                assert r3[window[k - 1]] == cfg.T_SKY, f"clouds run together at column {c}: {r3}"
+            if k < 21 and window[k + 1] in stable:
+                want = t + 1 if i < width - 1 else cfg.T_SKY
+                assert r3[window[k + 1]] == want, f"broken cloud at column {c}: {r3}"
             if i == 0:
-                seen.add(frame // 60 * 1000 + c)
-    starts = {s % 1000 for s in seen}
+                seen.add((shape, frame // 60 * 1000 + c))
+    starts = {(shape, s % 1000) for shape, s in seen}
     assert len(starts) >= 6, f"clouds seen at map columns {sorted(starts)} only"
+    assert {shape for shape, _ in starts} == {"big", "small"}, "only one cloud shape"

@@ -61,8 +61,10 @@
 /* Hardware sprite (OAM) slots. */
 #define OAM_PANDA      0    /* 4 sprites: 0..3 */
 #define OAM_FX         4
-#define OAM_TEXT       5    /* up to 10 sprites: 5..14 */
+#define OAM_TEXT       5    /* PRESS START, 10 sprites: 5..14 */
 #define OAM_TEXT_END   15
-#define OAM_USED       15   /* everything from here up stays hidden */
+#define OAM_OVER       15   /* GAME OVER, 8 sprites: 15..22 */
+#define OAM_OVER_END   23
+#define OAM_USED       23   /* everything from here up stays hidden */
 
 #endif

@@ -17,6 +17,7 @@ int16_t panda_y;
 int16_t panda_vy;
 uint8_t panda_on_ground;
 uint8_t jumps_used;
+uint8_t jump_buffer;
 
 #define FLOOR_Y      ((GROUND_Y - 16) << 8)   /* panda_y when standing */
 #define SUNK_Y       (GROUND_Y << 8)          /* dead and fully below ground */
@@ -38,24 +39,42 @@ void player_reset(void) {
     panda_vy = 0;
     panda_on_ground = 1;
     jumps_used = 0;
+    jump_buffer = 0;
     dead = 0;
     hidden = 0;
 }
 
-/* The first press leaves the ground; one more press in the air *sets* the
-   velocity to the smaller double jump, like the original. */
-uint8_t player_jump(void) {
+static void take_off(void) {
+    panda_vy = -JUMP_VEL;
+    panda_on_ground = 0;
+    jumps_used = 1;
+    jump_buffer = 0;
+}
+
+/* A pressed (before this frame's gravity). On the ground: jump. In the air
+   the second press is the double jump, but only when it helps:
+   - vy = -DJUMP_VEL must be a boost. In the first 14 frames of a jump the
+     panda still rises faster than that, and the original's "set the
+     velocity" rule would cut the jump short (too low for a 2-box column);
+   - the panda must be at least BUFFER_HEIGHT px up. Lower down (the last
+     4 frames of a fall from a jump) a full jump on landing is worth more
+     than a short hop.
+   Any other press in the air is kept for JUMP_BUFFER frames, and if the
+   panda lands in that time it jumps again at once (player_physics), so a
+   press that comes a little early is not lost. */
+uint8_t player_press(void) {
     if (panda_on_ground) {
-        panda_vy = -JUMP_VEL;
-        panda_on_ground = 0;
-        jumps_used = 1;
+        take_off();
         return JUMPED;
     }
-    if (jumps_used == 1) {
+    if (jumps_used == 1 && panda_vy > -DJUMP_VEL &&
+        panda_y <= FLOOR_Y - (BUFFER_HEIGHT << 8)) {
         panda_vy = -DJUMP_VEL;
         jumps_used = 2;
+        jump_buffer = 0;
         return DOUBLE_JUMPED;
     }
+    jump_buffer = JUMP_BUFFER;
     return 0;
 }
 
@@ -73,8 +92,13 @@ uint8_t player_physics(void) {
         panda_vy = 0;
         panda_on_ground = 1;
         jumps_used = 0;
-        return 1;
+        if (jump_buffer) {
+            take_off();           /* a kept press: straight back up, as if */
+            return JUMPED;        /* pressed on the first frame on the ground */
+        }
+        return LANDED;
     }
+    if (jump_buffer) jump_buffer--;
     if (panda_y < 0) {            /* can't leave the top of the screen */
         panda_y = 0;
         if (panda_vy < 0) panda_vy = 0;
@@ -96,6 +120,7 @@ void player_run(void) {
 
 void player_die(void) {
     dead = 1;
+    jump_buffer = 0;
     panda_on_ground = 0;
     panda_vy = -DEAD_HOP_VEL;
 }
@@ -110,6 +135,10 @@ void player_dead_fall(void) {
         if (panda_vy < 0) panda_vy = 0;
     }
     if (panda_y >= SUNK_Y) hidden = 1;
+}
+
+uint8_t player_sunk(void) {
+    return hidden;
 }
 
 void player_draw(void) {
@@ -146,10 +175,10 @@ static uint8_t fx_tick;
 static uint8_t fx_x;
 static uint8_t fx_y;
 
-void fx_start(uint8_t y) {
+void fx_start(uint8_t x, uint8_t y) {
     fx_frame = 0;
     fx_tick = 0;
-    fx_x = PANDA_X + 4;           /* centred under the 16 px panda */
+    fx_x = x;
     fx_y = y;
 }
 

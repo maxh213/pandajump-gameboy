@@ -33,11 +33,38 @@ uint8_t debug_invincible;
 
 static uint8_t joy_prev;
 static uint8_t pressed;           /* buttons that went down this frame */
-static uint8_t state_timer;
 static uint8_t ramp_count;        /* points since the last difficulty step */
 static uint8_t rng_seeded;
 static uint8_t music_on = 1;
-static uint8_t prompt_shown;
+
+/* The game-over screen, in order */
+#define DEAD_FALLING  0           /* the panda sinks; no text yet */
+#define DEAD_TEXT     1           /* GAME OVER and the score are up */
+#define DEAD_PROMPT   2           /* PRESS START: a press restarts */
+static uint8_t dead_phase;
+static uint8_t dead_timer;        /* frames since the messages appeared */
+static uint8_t new_best;
+
+/* PRESS START blinks relative to when it appeared: on for BLINK_ON frames
+   of every BLINK_PERIOD. */
+static uint8_t blink_timer;
+static uint8_t prompt_on;
+
+static void prompt_show(uint8_t y) {
+    blink_timer = 0;
+    prompt_on = 1;
+    hud_prompt(y);
+}
+
+static void prompt_blink(uint8_t y) {
+    uint8_t on = (uint8_t)(++blink_timer & (BLINK_PERIOD - 1)) < BLINK_ON;
+
+    if (on != prompt_on) {
+        prompt_on = on;
+        if (on) hud_prompt(y);
+        else hud_prompt_hide();
+    }
+}
 
 #ifdef DEBUG_TIMING
 /* Lines of LCD time the frame's work took, counted from the start of
@@ -57,10 +84,12 @@ static void measure_frame(void) {
 static void start_run(void) {
     uint8_t from_title = (game_state == STATE_TITLE);
 
-    hud_prompt(0);
-    hud_messages_clear();
+    hud_prompt_hide();
+    hud_game_over(0);
+    hud_message_clear();
     world_start_run(from_title);
     player_reset();
+    player_draw();                /* back on its feet in the new run's first frame */
     score = 0;
     ramp_count = 0;
     hud_score(0);
@@ -72,21 +101,16 @@ static void start_run(void) {
 /* State changes set game_state last, so whoever sees the new state (the
    tests, reading RAM between frames) also sees everything that goes with it. */
 static void die(void) {
-    uint8_t new_best = 0;
-
-    state_timer = 0;
-    prompt_shown = 0;
+    dead_phase = DEAD_FALLING;
     player_die();
     sfx_death();
     music_stop();
+    new_best = 0;
     if (score > high_score) {
         high_score = score;
-        save_store(high_score);
-        hud_high(high_score);
+        save_store(high_score);   /* saved at once; the window's HI waits for NEW BEST! */
         new_best = 1;
     }
-    hud_message(0, 7, "GAME OVER");
-    hud_message_num(1, 8, new_best ? "NEW BEST! " : "SCORE ", score);
     game_state = STATE_DEAD;
 }
 
@@ -94,12 +118,13 @@ static void title_state(void) {
     world_scroll();               /* no boxes on the title */
     player_run();
     player_draw();
-    if ((frame_count & BLINK_FRAMES) ? prompt_shown : !prompt_shown) {
-        prompt_shown = !prompt_shown;
-        hud_prompt(prompt_shown);
-    }
-    if (pressed && !rng_seeded) {
-        /* DIV is effectively random by the time a person presses a button. */
+    prompt_blink(TITLE_PROMPT_Y);
+    if (rng_seeded) {
+        rand();                   /* stir: the run also depends on when Start comes */
+    } else if (pressed) {
+        /* The only entropy is when the player presses: the joypad and DIV
+           are read at the same point of every frame, so this seed is a
+           function of the press frame. */
         initrand(((uint16_t)DIV_REG << 8) | frame_count);
         rng_seeded = 1;
     }
@@ -116,21 +141,25 @@ static void play_state(void) {
 
     if (pressed & J_START) {
         sfx_pause();
-        music_stop();
-        hud_message(0, 8, "PAUSED");
+        music_pause();            /* silent, but keeps its place in the song */
+        hud_message(8, "PAUSED");
         game_state = STATE_PAUSED;
         return;
     }
     if (pressed & J_A) {
-        jump = player_jump();
+        jump = player_press();
         if (jump == JUMPED) {
             sfx_jump();
         } else if (jump == DOUBLE_JUMPED) {
             sfx_double_jump();
-            fx_start((uint8_t)(panda_y >> 8) + 12);
+            fx_start(PANDA_X + 4, (uint8_t)(panda_y >> 8) + 12);   /* under the feet */
         }
     }
-    if (player_physics()) fx_start(GROUND_Y - 8);   /* landed */
+    jump = player_physics();
+    if (jump) {                   /* landed */
+        fx_start(PANDA_X - 4, GROUND_Y - 8);   /* at the heel, not hidden behind the legs */
+        if (jump == JUMPED) sfx_jump();   /* a kept press took off again */
+    }
     world_scroll();
     world_clouds(world_speed);
     player_run();
@@ -152,32 +181,46 @@ static void play_state(void) {
 
 static void paused_state(void) {
     if (pressed & J_START) {
-        hud_message_clear(0);
+        hud_message_clear();
         sfx_pause();
-        if (music_on) music_play(MUSIC_GAME);
+        if (music_on) music_resume();
         game_state = STATE_PLAY;
     }
 }
 
+/* The death reads first: the messages wait until the panda has sunk out
+   of sight (its hop would cover them), PRESS START comes PROMPT_DELAY
+   frames later, and only then does a press restart. `pressed` only has
+   buttons that went down this frame, so A held from the run never counts. */
 static void dead_state(void) {
     player_dead_fall();
     player_draw();
     fx_update(0);
     world_clouds(SPEED_BASE);     /* the sky keeps drifting */
-    if (state_timer < DEAD_DELAY) {
-        state_timer++;
+    if (dead_phase == DEAD_FALLING) {
+        if (player_sunk()) {
+            /* the score first: GAME OVER and PRESS START line up with it */
+            hud_message_num(OVER_SCORE_ROW, new_best ? "NEW BEST! " : "SCORE ", score);
+            hud_game_over(1);
+            if (new_best) hud_high(high_score);   /* the window's HI changes with NEW BEST! */
+            dead_timer = 0;
+            dead_phase = DEAD_TEXT;
+        }
         return;
     }
-    if ((frame_count & BLINK_FRAMES) ? prompt_shown : !prompt_shown) {
-        prompt_shown = !prompt_shown;
-        if (prompt_shown) hud_message(2, 9, "PRESS START");
-        else hud_message_clear(2);
+    if (dead_phase == DEAD_TEXT) {
+        if (++dead_timer < PROMPT_DELAY) return;
+        prompt_show(OVER_PROMPT_Y);
+        dead_phase = DEAD_PROMPT;
+    } else {
+        prompt_blink(OVER_PROMPT_Y);
     }
     if (pressed & (J_START | J_A)) start_run();
 }
 
 void main(void) {
     uint8_t joy;
+    uint8_t ly;
 
     DISPLAY_OFF;
     BGP_REG = 0xE4;
@@ -201,12 +244,18 @@ void main(void) {
     world_title();
     player_reset();
     player_draw();
+    prompt_show(TITLE_PROMPT_Y);  /* on the title's very first frame */
     if (music_on) music_play(MUSIC_TITLE);
 
     SHOW_BKG;
     SHOW_WIN;
     SHOW_SPRITES;
     DISPLAY_ON;
+
+    /* A button held since power-on is not a press: it has to be released
+       and pressed again (otherwise it would skip the title, and with the
+       same seed every time). */
+    joy_prev = joypad();
 
     while (1) {
         vsync();
@@ -222,12 +271,15 @@ void main(void) {
         joy_prev = joy;
 
         /* Run the game logic in the visible part of the frame, from line 1
-           (LY also reads 0 during line 153). This costs a few idle lines
-           but keeps each frame's RAM changes together within one emulator
-           frame, so headless tests see whole frames and a fixed input
-           latency. */
+           (LY also reads 0 during most of line 153). This costs a few idle
+           lines but keeps each frame's RAM changes together within one
+           emulator frame, so headless tests see whole frames and a fixed
+           input latency. LY is read once per test: reading it twice could
+           see 153 and then 0 and leave during line 153. */
         if (LCDC_REG & LCDCF_ON) {
-            while (LY_REG == 0 || LY_REG >= 144) {}
+            do {
+                ly = LY_REG;
+            } while (ly == 0 || ly >= 144);
         }
 
         switch (game_state) {

@@ -1,38 +1,46 @@
 """Fairness: with invincibility off, an autoplayer that only reads what a
 player could see (col_height, world_x, world_speed, the panda) and only
-acts through the A button reaches a score of 50 on several seeds.
+acts through the A button reaches a score of 90 on several seeds: past
+the top speed (score 40) and the end of the late ramp (score 80).
 
 It plans with the integer model in tests/model.py and checks, every
-frame, that the ROM did exactly what the model predicted (panda state and
-scroll), so a death here means either the game generated a sequence the
-physics can't clear, or the ROM left the documented rules.
+frame, that the ROM did exactly what the model predicted (panda state,
+kept press and scroll), so a death here means either the game generated a
+sequence the physics can't clear, or the ROM left the documented rules.
+The model includes the input rules (an early second press is not a double
+jump, a press near or after the end of a flight is kept and jumps on
+landing), so the sloppy player's mistimed presses land in them too.
 
 A second, "sloppy" player checks the stronger promise in src/config.h:
 every jump still clears when either press is up to 3 frames early or late,
 with at least 10 frames on the ground before the earliest take-off. It
 picks plans that survive every such error and then really presses up to 3
 frames off (seeded random), so it has to survive whatever it gets, up to a
-score of 120 (80 obstacles at the top speed)."""
+score of 120 (80 obstacles at the top speed, most of them after the late
+ramp has made doubles and 2-box columns more common)."""
 import random
 
 import pytest
 
-from model import AutoPlayer, Scroll, WorldMap, speed_for_score
+from model import AutoPlayer, WorldMap, speed_for_score
 
-TARGET = 50
-SLOPPY_TARGET = 120      # well past the top of the ramp (score 40)
+TARGET = 90              # past the end of the late ramp (score 80)
+SLOPPY_TARGET = 120      # well past the top speed (score 40) and the late ramp
 SEEDS = (0, 13, 77)
 SLACK = 3                 # config.h: "up to 3 frames early or late"
 GROUND_FRAMES = 10        # config.h: "at least 10 frames on the ground"
 
 
-def autoplay(g, cfg, target, max_frames=12000, slack=0, rng=None):
+def autoplay(g, cfg, target, max_frames=12000, slack=0, rng=None, nervous=None):
+    """Play to `target`; returns (frames, rescues, nervous taps). With
+    `nervous` (an RNG) the player also taps A again 2..14 frames after
+    every take-off, while the panda still rises faster than DJUMP_VEL."""
     ap = AutoPlayer(cfg)
     phys = ap.phys
     hx0 = ap.hx0
     g.start_run()
     assert g.u8("debug_invincible") == 0
-    scroll = Scroll(0, 0, g.u16("world_speed"))
+    scroll = g.scroll()
     wmap = WorldMap()
     presses = set()          # logic frames (counted from the run's first) that see A
     expected = None
@@ -41,27 +49,32 @@ def autoplay(g, cfg, target, max_frames=12000, slack=0, rng=None):
     prev_ground = True
     plan_target = 0          # right edge the current jump was planned to clear
     rescues = 0
+    taps = 0
     for t in range(max_frames):
         state = g.state()
         score = g.u16("score")
         panda = g.panda()
         if expected is not None:
-            assert (panda.y, panda.vy, panda.on_ground, panda.jumps) == \
-                (expected.y, expected.vy, expected.on_ground, expected.jumps), \
-                f"frame {t}: panda {panda} but the model says {expected}"
-        assert g.u16("world_x") == scroll.x & 0xFFFF, f"frame {t}: world_x off the model"
+            assert panda == expected, f"frame {t}: panda {panda} but the model says {expected}"
+        assert (g.u16("world_x"), g.u8("world_sub")) == (scroll.x & 0xFFFF, scroll.sub), \
+            f"frame {t}: world_x off the model"
         if state != cfg.STATE_PLAY:
             upcoming = [o for o in wmap.obstacles(False) if o.right_edge > scroll.x]
             pytest.fail(f"died at score {score}, frame {t}, world_x {scroll.x}; "
                         f"next obstacles {upcoming[:3]}; last plans {log[-3:]}")
         if score >= target:
-            return t, rescues
+            return t, rescues, taps
         speed = g.u16("world_speed")
         assert speed == speed_for_score(cfg, score)
         scroll.speed = speed
         assert panda.y >= 0
         if panda.on_ground and not prev_ground:
             landed_at = t
+        if nervous and not panda.on_ground and prev_ground:
+            p = t + nervous.randint(2, 14)          # t is the take-off frame
+            if not presses & {p - 1, p, p + 1}:
+                presses.add(p)
+                taps += 1
         prev_ground = panda.on_ground
         wmap.record(scroll.x, g.col_height())
 
@@ -118,7 +131,7 @@ def autoplay(g, cfg, target, max_frames=12000, slack=0, rng=None):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("seed", SEEDS)
-def test_autoplayer_reaches_50(make_game, cfg, seed):
+def test_autoplayer_reaches_90(make_game, cfg, seed):
     g = make_game()
     g.tick(seed)
     autoplay(g, cfg, TARGET)
@@ -130,9 +143,24 @@ def test_autoplayer_reaches_50(make_game, cfg, seed):
 def test_sloppy_player_reaches_120(make_game, cfg, seed):
     g = make_game()
     g.tick(seed)
-    _, rescues = autoplay(g, cfg, SLOPPY_TARGET, max_frames=20000, slack=SLACK, rng=random.Random(seed))
+    _, rescues, _ = autoplay(g, cfg, SLOPPY_TARGET, max_frames=20000, slack=SLACK, rng=random.Random(seed))
     assert g.u16("score") >= SLOPPY_TARGET
     assert rescues == 0, f"{rescues} tolerant plans had to be replaced mid-jump"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("seed", SEEDS)
+def test_nervous_double_tap_is_harmless(make_game, cfg, seed):
+    """The exact autoplayer, plus a nervous second tap 2..14 frames after
+    every take-off, where the original's rule (the second press *sets*
+    vy = -DJUMP_VEL) cut the jump too short for a 2-box column. The taps
+    are not double jumps: the ROM matches the model frame for frame and the
+    run still reaches 50."""
+    g = make_game()
+    g.tick(seed)
+    _, _, taps = autoplay(g, cfg, 50, nervous=random.Random(seed))
+    assert g.u16("score") >= 50
+    assert taps >= 40
 
 
 @pytest.mark.slow

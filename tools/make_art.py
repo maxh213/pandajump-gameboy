@@ -2,9 +2,19 @@
 """Hand-pixelled art for PandaJump GB: writes art/*.png from the text grids below.
 
 Every image is drawn here as text, one character per pixel, so the art can be
-reviewed and diffed like code. After editing a grid, run `make art` (or this
-script), then `python3 tools/preview_art.py` to see the result with the
-in-game shades and in a mock game screen.
+reviewed and diffed like code. This file is the source of the art: the PNGs
+are generated from it and committed, and are never edited by hand (a hand
+edit is lost at the next `make art`). After editing a grid, run `make art`
+(or this script), then `tools/preview_art.py` to see the result with the
+in-game shades and in mock game screens, and commit the PNGs with the grids.
+
+  tools/make_art.py            # write the PNGs whose pixels or palette changed
+  tools/make_art.py --check    # compare art/*.png with the grids; write nothing,
+                               # exit 1 listing any difference (for CI)
+
+Both compare what the game sees (palette indices and palette), not PNG bytes,
+which differ between Pillow versions. An unchanged PNG is not rewritten, so
+`make art` alone doesn't force a ROM rebuild.
 
 Output format (docs/DESIGN.md): indexed PNGs with exactly 4 palette entries,
 where the palette index is the Game Boy colour number. File names, sizes and
@@ -25,6 +35,8 @@ looks the same in every image:
     '+'  index 2, shade 1 (grey shading)
     '#'  index 3, shade 3 (black fur and outline)
 """
+import argparse
+import sys
 from pathlib import Path
 
 from PIL import Image
@@ -68,11 +80,6 @@ def tile_xy(index):
     return (index % 16) * 8, (index // 16) * 8
 
 
-def save(im, name, size):
-    assert im.size == size, (name, im.size)
-    assert len(im.getpalette()) == 4 * 3, name  # exactly 4 entries
-    im.save(ART / name)
-
 
 def check_outlined(rows, what):
     """Sprites: every white or grey pixel must be closed in by black, so the
@@ -91,6 +98,11 @@ def check_outlined(rows, what):
 # art/panda.png: ten 16x16 frames, facing right. The metasprite is placed by
 # its top-left corner; the feet rest on row 15 in the running frames, so the
 # game draws the sprite at y = GROUND_Y - 16 when the panda is on the ground.
+#
+# The face, like the original's: two solid black eye patches that droop
+# down and outward (the near one with a white glint at its upper inner
+# side, the far one running into the head's outline) and a black nose
+# below between them. The dead pose (frame 9) has X eyes instead.
 
 PANDA = [
     # 0: run, contact. Legs spread, near arm swung back. Body down 1 px.
@@ -101,9 +113,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ..#############.
     .####oooooo+#...
@@ -119,9 +131,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ....###########.
     ....#o##oooo#...
@@ -138,9 +150,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ....###########.
     ....#ooooooo####
@@ -158,9 +170,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ....###########.
     ....#ooooooo####
@@ -176,9 +188,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ....###########.
     ....#o##oooo#...
@@ -195,9 +207,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ..#############.
     .####oooooo+#...
@@ -214,9 +226,9 @@ PANDA = [
     ...###oooooo###.
     ##.##ooooooooo##
     ##.#ooooooooooo#
-    ##.#ooooo##ooo##
-    .#.#oooo#o#oo#o#
-    .#.#oooo###oo###
+    ##.#ooooo##oo###
+    .#.#ooo##o#oo###
+    .#.#ooo##ooooo##
     .##.#+ooooo#oo#.
     ..#############.
     ....#ooooooo#...
@@ -234,9 +246,9 @@ PANDA = [
     ...###oooooo###.
     ...##ooooooooo##
     ...#ooooooooooo#
-    ...#ooooo##ooo##
-    ...#oooo#o#oo#o#
-    ...#oooo###oo###
+    ...#ooooo##oo###
+    ...#ooo##o#oo###
+    ...#ooo##ooooo##
     ....#+ooooo#oo#.
     ...############.
     ..#oooooo####...
@@ -246,16 +258,17 @@ PANDA = [
     ....########....
     ................
     """,
-    # 8: falling. Arm straight up, legs dangling apart.
+    # 8: falling. Arm raised beside the head (a 2 px wide paw that stops
+    # below the ears, so it doesn't read as a stick), legs dangling apart.
     """
-    ##..##......##..
-    ##.############.
-    .#.###oooooo###.
+    ....##......##..
+    ...############.
+    ...###oooooo###.
     .#.##ooooooooo##
-    .#.#ooooooooooo#
-    .#.#ooooo##ooo##
-    .#.#oooo#o#oo#o#
-    .#.#oooo###oo###
+    ##.#ooooooooooo#
+    ##.#ooooo##oo###
+    ##.#ooo##o#oo###
+    ##.#ooo##ooooo##
     .##.#+ooooo#oo#.
     ..#############.
     ....#ooooooo#...
@@ -293,7 +306,7 @@ def panda():
         rows = grid(text, 16, 16)
         check_outlined(rows, f"panda frame {f}")
         draw(im, f * 16, 0, rows, SPRITE_KEY)
-    save(im, "panda.png", (160, 16))
+    return im
 
 
 # --------------------------------------------------------------------------
@@ -324,15 +337,16 @@ FX = [
     +oooooo+
     .++++++.
     """,
-    # 2: biggest, rising
+    # 2: biggest, rising. Three uneven bumps (the tallest left of centre) on
+    # a wide flat base, so it reads as a cloud of dust, not a heart.
     """
     ........
-    .++..++.
-    +oo++oo+
+    ..+++...
+    .+ooo++.
+    ++oo+oo+
     +oooooo+
     +oooooo+
-    .+oooo+.
-    ..++++..
+    .++++++.
     ........
     """,
     # 3: fading into wisps
@@ -354,7 +368,7 @@ def fx():
     for f, text in enumerate(FX):
         rows = grid(text, 8, 8)
         draw(im, f * 8, 0, rows, SPRITE_KEY)
-    save(im, "fx.png", (32, 8))
+    return im
 
 
 # --------------------------------------------------------------------------
@@ -466,6 +480,30 @@ CLOUD = """
 ......+++++++++++++++++++++++...
 ................................
 ................................
+"""
+
+# Small cloud, 24x16: top row at tiles 120-122, bottom row at 123-125 (both
+# halves sit side by side in the last tile row of the sheet). The same style
+# as the big cloud, but its tallest bump is right of centre, so the sky isn't
+# one repeated shape. The top three lines stay sky so the outline never
+# reaches the tile's top edge (and so never touches the HUD band).
+CLOUD2 = """
+........................
+........................
+........................
+.............++++.......
+...........++....+......
+.....+++..+.......++....
+....+...++..........+...
+...+.................+..
+..+..................+..
+..+...................+.
+..+...................+.
+...+.....++......++...+.
+....++.....++++++....+..
+......++++++++++++++++..
+........................
+........................
 """
 
 # Window HUD background: solid shade 3, the same as the ground's mortar.
@@ -909,6 +947,10 @@ def bg_tiles():
     put_tiles(im, 8, "\n".join(rocks[:8]), 16, 8)    # ground row A
     put_tiles(im, 24, "\n".join(rocks[8:]), 16, 8)   # ground row B
     put_tiles(im, 10, CLOUD, 32, 16)
+    cloud2 = grid(CLOUD2, 24, 16)
+    assert set("".join(cloud2[:2])) == {"."}, "small cloud must keep clear of its tiles' top lines"
+    put_tiles(im, 120, "\n".join(cloud2[:8]), 24, 8)    # T_CLOUD2_TOP
+    put_tiles(im, 123, "\n".join(cloud2[8:]), 24, 8)    # T_CLOUD2_BOT
     put_tiles(im, 14, HUD_DARK, 8, 8)
     for i, ch in enumerate(DARK_FONT):
         put_tiles(im, 32 + i, "\n".join(glyph_tile(ch, "#", ".")), 8, 8)
@@ -917,7 +959,7 @@ def bg_tiles():
     put_tiles(im, 116, HUD_DARK, 8, 8)
     for i, ch in enumerate(LIGHT_FONT_PUNCT):
         put_tiles(im, 117 + i, "\n".join(glyph_tile(ch, ".", "#")), 8, 8)
-    save(im, "bg_tiles.png", (128, 64))
+    return im
 
 
 # --------------------------------------------------------------------------
@@ -1170,13 +1212,104 @@ def title_logo():
     assert all(0 < x < w - 1 and 0 < y < h - 1 for x, y in set(solid) | depth), "logo does not fit"
     im = new_image(w, h)
     draw(im, 0, 0, out, BG_KEY)
-    save(im, "title_logo.png", (w, h))
+    return im
+
+
+# --------------------------------------------------------------------------
+# Output
+
+# Every file in art/, its size (fixed by the contract) and what draws it.
+IMAGES = {
+    "bg_tiles.png": ((128, 64), bg_tiles),
+    "panda.png": ((160, 16), panda),
+    "fx.png": ((32, 8), fx),
+    "title_logo.png": ((144, 32), title_logo),
+}
+
+
+def render_all():
+    """Every art image, drawn in memory: {file name: image}."""
+    out = {}
+    for name, (size, draw_image) in IMAGES.items():
+        im = draw_image()
+        assert im.size == size, (name, im.size)
+        assert len(im.getpalette()) == 4 * 3, name  # exactly 4 entries
+        out[name] = im
+    return out
+
+
+def differences(im, path):
+    """How the PNG at `path` differs from `im` in what the game sees: the
+    pixels' palette indices and the palette. [] when they match. PNG bytes
+    are not compared, since Pillow versions encode the same pixels
+    differently."""
+    if not path.exists():
+        return ["missing"]
+    try:
+        with Image.open(path) as disk:
+            disk.load()
+    except Exception as e:                  # not a PNG, truncated, ...
+        return [f"unreadable ({e})"]
+    if disk.mode != "P":
+        return [f"mode {disk.mode}, expected an indexed (P) image"]
+    if disk.size != im.size:
+        return ["size {}x{}, expected {}x{}".format(*disk.size, *im.size)]
+    out = []
+    if disk.getpalette() != im.getpalette():
+        out.append("palette differs")
+    a, b = disk.tobytes(), im.tobytes()
+    if a != b:
+        diff = [i for i in range(len(a)) if a[i] != b[i]]
+        out.append(f"{len(diff)} pixel(s) differ, the first at x={diff[0] % im.width} "
+                   f"y={diff[0] // im.width}")
+    return out
+
+
+def check(images):
+    """--check: compare art/ with the grids, write nothing. 0 if they match."""
+    problems = []
+    for name, im in images.items():
+        problems += [f"art/{name}: {d}" for d in differences(im, ART / name)]
+    for path in sorted(ART.glob("*.png")):
+        if path.name not in images:
+            problems.append(f"art/{path.name}: not drawn by tools/make_art.py")
+    if problems:
+        print("art/ does not match tools/make_art.py:", file=sys.stderr)
+        for p in problems:
+            print(f"  {p}", file=sys.stderr)
+        print("The grids in tools/make_art.py are the source: edit them (never the PNGs), "
+              "then run `make art` and commit the PNGs with them.", file=sys.stderr)
+        return 1
+    print(f"art/ matches tools/make_art.py ({len(images)} images)")
+    return 0
+
+
+def write(images):
+    """Write the PNGs whose pixels or palette changed. An unchanged file is
+    left alone, so its mtime stays and `make` doesn't rebuild the ROM."""
+    ART.mkdir(exist_ok=True)
+    written = []
+    for name, im in images.items():
+        if differences(im, ART / name):
+            im.save(ART / name)
+            written.append(f"art/{name}")
+    print(f"wrote {' '.join(written)}" if written else "art/ is up to date")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(
+        description="Write art/*.png from the text grids in this file.")
+    ap.add_argument("--check", action="store_true",
+                    help="compare art/*.png with the grids (pixels and palette) and exit "
+                         "non-zero, listing the differences, if they don't match; "
+                         "writes nothing")
+    args = ap.parse_args(argv)
+    images = render_all()
+    if args.check:
+        return check(images)
+    write(images)
+    return 0
 
 
 if __name__ == "__main__":
-    ART.mkdir(exist_ok=True)
-    bg_tiles()
-    panda()
-    fx()
-    title_logo()
-    print("wrote art/bg_tiles.png art/panda.png art/fx.png art/title_logo.png")
+    sys.exit(main())

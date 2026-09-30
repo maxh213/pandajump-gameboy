@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-uint16_t save_load(void);         /* 0 (and a fresh block) if blank/corrupt */
-void save_store(uint16_t value);
+uint16_t save_load(void);         /* 0 if no good copy; never writes */
+void save_store(uint16_t value);  /* into the older (or bad) of the two slots */
 
 #endif

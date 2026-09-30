@@ -4,7 +4,7 @@ BG map row 1 (0x9800) with the dark font, the high score in the window
 exactly those tiles."""
 import numpy as np
 
-from gb import bg_tile_pixels, hud_hi_row, ram_image, score_row, sram_block
+from gb import bg_tile_pixels, hud_hi_row, save_ram, score_row, sram_slot
 
 
 def row_px(tiles):
@@ -42,7 +42,7 @@ def test_score_row_uses_dark_font(make_game, cfg):
 
 
 def test_window_shows_hi_with_light_font(make_game, cfg):
-    g = make_game(ram=ram_image(sram_block(907)))
+    g = make_game(ram=save_ram(sram_slot(907)))
     g.tick(2, render=True)
     tiles = hud_hi_row(cfg, 907)
     assert g.win_row(0)[:20] == tiles

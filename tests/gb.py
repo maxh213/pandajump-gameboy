@@ -4,8 +4,7 @@ Frame timing (measured, and matching docs/DESIGN.md):
 
 - One ``tick()`` is one Game Boy frame. PyBoy's frame boundary is at the
   start of line 0, so within tick *k* the game runs its logic for frame *k*
-  (meant to start on line 1; it often starts on line 0, see
-  test_frames.py), then in VBlank (line 144) it reads the joypad, bumps
+  (from line 1, see test_frames.py), then in VBlank (line 144) it reads the joypad, bumps
   ``frame_count`` and writes the tiles that logic queued. When there are
   many tiles the writes run on into the first lines of tick *k+1*.
 - After tick *k*: RAM holds the result of frame *k*'s logic, VRAM holds the
@@ -223,7 +222,7 @@ class GB:
     def io(self, reg: int) -> int:
         return self.pb.memory[reg]
 
-    def sram(self, n: int = 6, offset: int = 0) -> list[int]:
+    def sram(self, n: int = 16, offset: int = 0) -> list[int]:
         """Cartridge RAM bank 0 at 0xA000 (read directly, enabled or not)."""
         return [self.pb.memory[0, 0xA000 + offset + i] for i in range(n)]
 
@@ -268,7 +267,8 @@ class GB:
 
     def start_run(self, button: str = "start", invincible: bool = False) -> None:
         """From the title (or a finished run): press, and return on the first
-        frame of the run (world_x is 0, nothing has scrolled yet)."""
+        frame of the run (nothing has scrolled yet: world_x is the title's or
+        the last run's world_x & 15, world_sub 0)."""
         self.tap(button)
         assert self.state() == 1, f"{button} did not start a run (state {self.state()})"
         if invincible:
@@ -280,7 +280,12 @@ class GB:
     def panda(self):
         from model import Panda
         return Panda(self.s16("panda_y"), self.s16("panda_vy"),
-                     bool(self.u8("panda_on_ground")), self.u8("jumps_used"))
+                     bool(self.u8("panda_on_ground")), self.u8("jumps_used"), self.u8("jump_buffer"))
+
+    def scroll(self):
+        """The world's scroll as a model.Scroll (world_x, world_sub, speed)."""
+        from model import Scroll
+        return Scroll(self.u16("world_x"), self.u8("world_sub"), self.u16("world_speed"))
 
 
 def record_world(g: GB, frames: int, wmap=None, chunk: int = 16, on_sample=None):
@@ -312,12 +317,28 @@ def record_world(g: GB, frames: int, wmap=None, chunk: int = 16, on_sample=None)
     return wmap, x
 
 
-def ram_image(block: bytes, fill: int = 0) -> bytes:
-    """8 KiB of cartridge RAM starting with `block`."""
-    return bytes(block) + bytes([fill]) * (0x2000 - len(block))
-
-
 # ---- text as tiles (src/tiles.h fonts) -------------------------------------
+def sprite_text(g: GB, first: int, end: int):
+    """The sprite text in OAM first..end-1 (docs/DESIGN.md: letters are
+    tiles S_TEXT_BASE + 0..25, 8 px apart, one row) as (text, left x, y),
+    with a space for each 8 px gap, or None if none of it is on screen."""
+    cfg = load_config()
+    sprites = sorted((x, y, t) for (y, x, t, a) in g.oam()[first:end] if -8 < y < 144 and -8 < x < 168)
+    if not sprites:
+        return None
+    ys = {y for _, y, _ in sprites}
+    assert len(ys) == 1, f"sprite text on more than one line: {sprites}"
+    text, x0 = "", sprites[0][0]
+    for i, (x, y, t) in enumerate(sprites):
+        assert 0 <= t - cfg.S_TEXT_BASE < 26, f"sprite tile {t} is not a letter"
+        if i:
+            gap = x - sprites[i - 1][0]
+            assert gap % 8 == 0 and gap >= 8, f"letters {gap} px apart"
+            text += " " * (gap // 8 - 1)
+        text += chr(ord("A") + t - cfg.S_TEXT_BASE)
+    return text, x0, ys.pop()
+
+
 def dark_text(cfg, text: str) -> list[int]:
     """Tiles of `text` in the dark font (space is T_SKY)."""
     special = {" ": cfg.T_SKY, "!": cfg.T_FONT_BANG, "-": cfg.T_FONT_DASH, ":": cfg.T_FONT_COLON,
@@ -427,8 +448,22 @@ def unwrap16(prev: int, new: int) -> int:
     return (new - prev) & 0xFFFF
 
 
-def sram_block(value: int, magic=b"PJ", version: int = 1) -> bytes:
-    """The 6-byte save block of docs/DESIGN.md."""
-    b = bytearray(magic) + bytes([version, value & 0xFF, (value >> 8) & 0xFF])
+SLOT_SIZE = 8              # docs/DESIGN.md "Save RAM": two slots at 0xA000 and 0xA008
+
+
+def sram_slot(value: int, seq: int = 1, magic=b"PJ", version: int = 2) -> bytes:
+    """One 8-byte save slot of docs/DESIGN.md: magic, version, sequence
+    number, score (little-endian), checksum ~(sum of bytes 0-5), 0."""
+    b = bytearray(magic) + bytes([version, seq & 0xFF, value & 0xFF, (value >> 8) & 0xFF])
     b.append((~sum(b)) & 0xFF)
+    b.append(0)
     return bytes(b)
+
+
+def save_ram(slot0: bytes | None = None, slot1: bytes | None = None, fill: int = 0xFF) -> bytes:
+    """8 KiB of cartridge RAM holding these slots (None leaves `fill`)."""
+    ram = bytearray([fill]) * 0x2000
+    for i, slot in enumerate((slot0, slot1)):
+        if slot is not None:
+            ram[i * SLOT_SIZE:i * SLOT_SIZE + len(slot)] = slot
+    return bytes(ram)
