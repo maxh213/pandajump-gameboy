@@ -149,8 +149,8 @@
        minimum SPACING    10    11     12    13     14   tiles
 
    SPACING_MIN = 14 is checked at every speed of the ramp (1.125 to 1.5 in
-   steps of 12/256) and at 1.5 px/frame 13 fails, so it is the tightest
-   spacing the top speed allows. The spacing is 14 all the way, the speed
+   steps of 12/256), and 13 already fails from 1.41 px/frame (score 30),
+   so it is the tightest spacing the top speed allows. The spacing is 14 all the way, the speed
    never exceeds SPEED_MAX, and the random extra only adds room, so every
    sequence is clearable at every point of the ramp, including obstacles
    generated just before a speed step. The late ramp only changes how often
