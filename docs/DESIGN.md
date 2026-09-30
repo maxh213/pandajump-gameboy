@@ -44,12 +44,15 @@ that depends on it.
 - Tile row 1 holds the score (top-left). The sky band only ever bobs
   *down* (`SCY` 0–4), so it can read into tile row 6 (always sky) but never
   into the HUD rows.
-- World band rows: 6–9 are always sky; 10–13 hold boxes (a 1-box column
-  fills rows 12–13, a 2-box column rows 10–13); row 14 is the grass top of
-  the ground; rows 15–16 are ground. **Ground surface `GROUND_Y` = 112**
-  (top of row 14). Ground and grass repeat every 2 tiles, which divides the
+- World band rows: 6–9 are sky, never boxes (rows 7–9 also take the
+  messages, see "Gameplay"); 10–13 hold boxes (a 1-box column fills rows
+  12–13, a 2-box column rows 10–13); row 14 is the grass top of the
+  ground; rows 15–16 are ground. **Ground surface `GROUND_Y` = 112** (top
+  of row 14). Ground and grass repeat every 2 tiles, which divides the
   32-tile map width, so they are written once and hardware scrolling does
   the rest.
+- Map row 17, under the window, is ground too. Rows 18–31 are never
+  written after start-up, so they are always plain sky.
 - Bottom HUD (window row 0): high score, light text on the dark ground
   colour, e.g. `HI 0042`.
 
@@ -72,8 +75,10 @@ that depends on it.
   most 128 unique tiles. The title screen draws it in the sky band (map rows
   2–5, columns 1–18) with the sky band's scroll held at 0. When a run
   starts it is replaced by sky and clouds one map row per frame; for those
-  4 frames the VBlank handler gives the sky band `SCY=32`, so it shows map
-  rows 6–9 (plain sky) and the wipe is never seen half done.
+  4 frames the VBlank handler gives the sky band `SCY=128`, so it shows map
+  rows 18–21 (always plain sky) and the wipe is never seen half done.
+  (Not rows 6–9: Start pressed during the wipe pauses and writes `PAUSED`
+  to row 8.)
 
 ### `art/bg_tiles.png` — 128×64 px, 16×8 tiles, index = row×16 + col
 

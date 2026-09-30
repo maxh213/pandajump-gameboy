@@ -2,7 +2,9 @@
    column generator, clouds in the sky band, and box collision.
 
    Map rows (docs/DESIGN.md): 0-1 HUD, 2-5 sky band (clouds, title logo),
-   6-9 always sky, 10-13 boxes, 14 grass, 15-16 ground. The ground repeats
+   6-9 sky (and the messages, rows 7-9), 10-13 boxes, 14 grass, 15-16
+   ground, 17 ground under the window, 18-31 never written after
+   world_init (plain sky, used to hide the logo wipe). The ground repeats
    every 2 tiles, which divides the 32-tile map, so it is written once and
    hardware scrolling does the rest. Box columns are written one at a time,
    just off-screen to the right, whenever world_x crosses a tile boundary. */
@@ -36,16 +38,20 @@ static uint8_t isr_sky_bob;
 
 static uint8_t logo_row = 4;      /* next title logo row to replace; 4 = done */
 
+/* While the logo is being replaced (a row per frame), the sky band (lines
+   16-47) shows map rows 18-21 instead. Nothing but world_init's
+   init_bkg() ever writes map rows 18-31, so they are always plain sky
+   and the wipe is never seen half done. (Rows 6-9 would not do: a
+   PAUSED pressed during the wipe goes to row 8.) */
+#define WIPE_SCY (18 * 8 - 16)
+
 static void vbl_isr(void) {
     SCX_REG = 0;                  /* HUD band: lines 0-15 don't scroll */
     SCY_REG = 0;
     LYC_REG = SKY_LYC;
     isr_world_scx = world_scx;
     isr_sky_scx = sky_scx;
-    /* While the logo is being replaced (a row per frame), show map rows
-       6-9 in the sky band instead: always plain sky, so the wipe is never
-       seen half done. */
-    isr_sky_bob = (logo_row < 4) ? 32 : sky_bob;
+    isr_sky_bob = (logo_row < 4) ? WIPE_SCY : sky_bob;
 }
 
 /* Runs at the start of line 15 and line 47. Both lines are plain sky on

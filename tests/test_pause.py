@@ -2,8 +2,9 @@
 (STATE_PAUSED, "PAUSED" shown), nothing moves, Start resumes where it
 left off."""
 import numpy as np
+import pytest
 
-from gb import dark_text, find_text
+from gb import SKY, bg_picture, dark_text, find_text, render_band
 from model import Physics, Scroll
 
 
@@ -131,3 +132,40 @@ def test_pause_holds_the_music_and_resume_continues_it(make_game, cfg):
     assert g.state() == cfg.STATE_PLAY
     assert max(levels(60)) > 0, "the music did not come back after the pause"
     assert calls == ["music_pause", "music_resume"]
+
+
+@pytest.mark.parametrize("delay", [1, 2, 3])
+def test_pause_during_the_logo_wipe(make_game, cfg, delay):
+    """Start `delay` frames after A has started a run from the title, while
+    the logo is still being replaced: the sky band keeps hiding the wipe
+    behind plain sky (and shows no second PAUSED from the world band's
+    message rows), the wipe finishes during the pause, and PAUSED is shown
+    once, in the world band."""
+    g = make_game()
+    g.tick(2, render=True)
+    title = g.shades()[SKY].copy()
+    g.hold("a")                          # starts the run
+    seen = []
+    for i in range(12):
+        if i == delay:
+            g.hold("start")              # pauses it
+        g.tick(1, render=True)
+        g.release("a")
+        g.release("start")
+        sky = g.shades()[SKY]
+        if np.array_equal(sky, title):
+            seen.append("logo")
+        elif (sky == 0).all():
+            seen.append("sky")
+        else:
+            pic = bg_picture(g)          # fails while logo tiles are left in the map
+            ok = any(np.array_equal(sky, render_band(g, range(16, 48), scx, bob, pic))
+                     for scx in range(4) for bob in range(5))
+            assert ok, f"sky band {i} frames after A is neither the logo, plain sky nor the new sky"
+            seen.append("run")
+    assert g.state() == cfg.STATE_PAUSED
+    assert seen == ["logo"] * 2 + ["sky"] * 4 + ["run"] * 6, seen
+    scx = g.u8("world_scx")
+    x = find_text(g, 8, dark_text(cfg, "PAUSED"), scx)
+    assert x is not None, "PAUSED not shown"
+    assert (g.shades()[64:72, x:x + 48] == 3).any(), "PAUSED not on the screen"

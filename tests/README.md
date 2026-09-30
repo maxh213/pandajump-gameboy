@@ -39,7 +39,7 @@ repo.
 | `test_sprites.py` | Panda frame per state (run cycle speed, jump, double, fall, dead, behind the ground), dust puff (the landing one visible at the heel), sprite tiles < 128, <= 10 per line (title, run, game over), text sprites only where allowed, spare OAM hidden |
 | `test_hud.py` | LCDC/WY/WX/palettes, score row with the dark font, window `HI` with the light font, pixel-exact against the art |
 | `test_parallax.py` | Band shifts measured on the screen (world = `world_x`, sky slower, HUD and window static), frame by frame; bob within 0-4; the screen equals the VRAM map drawn with each band's scroll; clouds (big and small) keep coming |
-| `test_pause.py` | Start pauses, nothing moves for 60 frames (RAM and pixels), A ignored, Start resumes exactly where it stopped, the music holds its place (music_pause/music_resume) |
+| `test_pause.py` | Start pauses, nothing moves for 60 frames (RAM and pixels), A ignored, Start resumes exactly where it stopped, the music holds its place (music_pause/music_resume), a pause during the logo wipe keeps the wipe hidden and shows `PAUSED` once |
 | `test_save.py` | Two-slot save format, saves alternate slots, sequence wrap, the newest good slot is loaded, power cycle, worse/equal run writes nothing, corrupt/blank RAM reads 0 and is not written, a bad slot next to a good one, a save cut off after each of its writes, RAM disabled after use |
 | `test_frames.py` | `frame_count` +1 every frame through a session with every transition; `vsync()` reached before VBlank (PyBoy hooks) |
 | `test_sound.py` | APU on; jump, double jump, score and death sounds on channels 1/4; music only on 2/3 (channels isolated with NR51) |
