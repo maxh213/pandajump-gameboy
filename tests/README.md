@@ -24,7 +24,7 @@ repo.
 | File | What it checks |
 |------|----------------|
 | `gb.py` | Helpers: `GB` (one PyBoy on a private ROM copy: boot, tick, hold/press/tap, `run_until` with a frame cap, symbol reads u8/s8/u16/s16, BG/window map rows, OAM, screen as shades 0-3, cartridge RAM), `record_world`, save blocks, text as font tiles, `render_band` (the BG map drawn from the art), png2asset output parsers |
-| `model.py` | An independent integer model of the rules: physics, scroll with the 8.8 fraction, the world map recorded from `col_height`, obstacles, the ramp, and the autoplayer's planners |
+| `model.py` | An independent integer model of the rules: physics and the input rules (a double jump only as a boost and above BUFFER_HEIGHT, other presses in the air kept JUMP_BUFFER frames for a jump on landing), scroll with the 8.8 fraction, the world map recorded from `col_height`, obstacles, the ramp and the late ramp, the autoplayer's planners, and config.h's worst-case chain check |
 | `conftest.py` | Session fixtures: `rom` (runs `make`), `cfg` (config.h + tiles.h), `make_game` / `game` |
 | `test_rom_header.py` | Title, DMG only, MBC5+RAM+battery (0x1B), 8 KiB RAM, logo, header and global checksums, size |
 | `test_art.py` | Every `art/*.png` indexed with exactly 4 entries of the contract palette and the contract size, fonts, tile budgets from `build/res/*.h` (panda < 64, logo <= 128), metasprites rebuild the art |
