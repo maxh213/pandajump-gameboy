@@ -7,7 +7,8 @@ that depends on it.
 
 ## Toolchain
 
-- GBDK-2020 4.5.x, installed at `$(GBDK_HOME)` (default `/opt/gbdk/`).
+- GBDK-2020 4.5.x at `$(GBDK_HOME)`: `tools/get-gbdk.sh` installs it in
+  `tools/gbdk`, which the Makefile prefers, else `/opt/gbdk/` (the AUR package).
 - `make` builds `build/pandajump.gb`; `make run` opens it in mGBA;
   `make test` runs the Python test suite (PyBoy, headless);
   `make web` copies the ROM into `web/`.

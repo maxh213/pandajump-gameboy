@@ -57,9 +57,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The ROM and its symbols from the build job; the smoke test reads
+      # game variables through build/pandajump.sym.
+      - uses: actions/download-artifact@v8
+        with:
+          name: pandajump-rom
+          path: build
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: web/tests/package-lock.json
 
       - name: Install the smoke test's browser
         working-directory: web/tests
