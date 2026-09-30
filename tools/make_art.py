@@ -475,6 +475,30 @@ CLOUD = """
 ................................
 """
 
+# Small cloud, 24x16: top row at tiles 120-122, bottom row at 123-125 (both
+# halves sit side by side in the last tile row of the sheet). The same style
+# as the big cloud, but its tallest bump is right of centre, so the sky isn't
+# one repeated shape. The top three lines stay sky so the outline never
+# reaches the tile's top edge (and so never touches the HUD band).
+CLOUD2 = """
+........................
+........................
+........................
+.............++++.......
+...........++....+......
+.....+++..+.......++....
+....+...++..........+...
+...+.................+..
+..+..................+..
+..+...................+.
+..+...................+.
+...+.....++......++...+.
+....++.....++++++....+..
+......++++++++++++++++..
+........................
+........................
+"""
+
 # Window HUD background: solid shade 3, the same as the ground's mortar.
 HUD_DARK = SOLID_BLACK
 
@@ -916,6 +940,10 @@ def bg_tiles():
     put_tiles(im, 8, "\n".join(rocks[:8]), 16, 8)    # ground row A
     put_tiles(im, 24, "\n".join(rocks[8:]), 16, 8)   # ground row B
     put_tiles(im, 10, CLOUD, 32, 16)
+    cloud2 = grid(CLOUD2, 24, 16)
+    assert set("".join(cloud2[:2])) == {"."}, "small cloud must keep clear of its tiles' top lines"
+    put_tiles(im, 120, "\n".join(cloud2[:8]), 24, 8)    # T_CLOUD2_TOP
+    put_tiles(im, 123, "\n".join(cloud2[8:]), 24, 8)    # T_CLOUD2_BOT
     put_tiles(im, 14, HUD_DARK, 8, 8)
     for i, ch in enumerate(DARK_FONT):
         put_tiles(im, 32 + i, "\n".join(glyph_tile(ch, "#", ".")), 8, 8)
