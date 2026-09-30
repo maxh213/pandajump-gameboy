@@ -1,4 +1,6 @@
-name: Build and test
+# Builds the ROM, runs the tests, checks the browser player, and publishes
+# web/ to GitHub Pages from main once all of that has passed.
+name: Build, test and deploy
 
 on:
   push:
@@ -12,12 +14,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install GBDK-2020
         run: tools/get-gbdk.sh
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -26,18 +28,73 @@ jobs:
       - name: Install Python tools
         run: pip install -r requirements-dev.txt
 
+      - name: Check art/*.png match tools/make_art.py
+        run: make art-check
+
       - name: Build the ROM
         run: make
 
       - name: Check the committed web ROM is up to date
-        run: cmp build/pandajump.gb web/pandajump.gb
+        run: |
+          cmp build/pandajump.gb web/pandajump.gb || {
+            echo "::error file=web/pandajump.gb::web/pandajump.gb is out of date: run 'make web' and commit it"
+            exit 1
+          }
 
       - name: Run the tests
         run: make test
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pandajump-rom
           path: |
             build/pandajump.gb
             build/pandajump.sym
+
+  web:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install the smoke test's browser
+        working-directory: web/tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        working-directory: web/tests
+        run: npm test
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build, web]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Collect the site (web/ without its tests)
+        run: rsync -a --exclude tests/ web/ _site/
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5
