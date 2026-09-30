@@ -17,9 +17,10 @@ a web browser through a bundled emulator.
 
 - **In a browser:** once GitHub Pages is on for this repository (see
   [`ci/README.md`](ci/README.md)), the game is at
-  <https://maxh213.github.io/pandajump-gameboy/>. To play locally:
-  `make web && python3 -m http.server -d web 8000`, then open
-  <http://localhost:8000/>. Keyboard, gamepad and touch all work, and the
+  <https://maxh213.github.io/pandajump-gameboy/>. To play locally, serve
+  the `web/` folder (the ROM is committed there) with
+  `python3 -m http.server -d web 8000` and open <http://localhost:8000/>;
+  after changing the game, run `make web` first. Keyboard, gamepad and touch all work, and the
   high score is kept in the browser.
 - **In an emulator:** download [`web/pandajump.gb`](web/pandajump.gb) and
   open it in mGBA, SameBoy, Emulicious, BGB or any other Game Boy emulator.
@@ -31,7 +32,7 @@ a web browser through a bundled emulator.
 
 | Game Boy | Keyboard (web) | What it does |
 |----------|----------------|--------------|
-| A | Z, Space, W or Up | Jump; press again in the air to double jump |
+| A | Z, Space, W or Up | Jump; press again in the air to double jump. Also starts a run and restarts after game over |
 | Start | Enter | Start a run, pause and resume, restart after game over |
 | Select | C or Backspace | On the title screen, turn the music off or on |
 
@@ -40,10 +41,11 @@ On a phone, tap the on-screen A button or the screen itself to jump.
 ## How it plays
 
 - The panda runs at a steady pace and crates scroll in from the right, one
-  or two high. After 10 points some come as double-wide columns, which need
-  the double jump.
+  or two high. After 10 points some come as double-wide columns; the tall
+  ones are easiest with the double jump.
 - You score a point for every column you clear. Touch a crate and it's game
-  over; press Start (or A) to go again straight away.
+  over. When PRESS START appears, about a second later, press Start or A
+  to go again.
 - The game speeds up every 5 points until score 40, then keeps getting
   harder with more double and tall columns up to score 80. Every obstacle
   sequence it can generate is clearable, with room for presses a few frames
@@ -62,15 +64,21 @@ and Python 3 for the tests and art tools.
 tools/get-gbdk.sh                    # download GBDK-2020 4.5.0 into tools/gbdk (or install the gbdk-2020 AUR package)
 make                                 # build build/pandajump.gb
 make run                             # play it in mGBA (set MGBA=... for another emulator)
-pip install -r requirements-dev.txt  # PyBoy, Pillow, numpy, pytest
-make test                            # 220 headless tests, about a minute
+python3 -m venv .venv                # Debian/Ubuntu: apt install python3-venv first
+.venv/bin/pip install -r requirements-dev.txt   # PyBoy, Pillow, numpy, pytest
+make test                            # 220 headless tests, under a minute
 make web                             # copy the ROM into web/ for the browser player
 ```
 
+The Makefile uses `.venv/bin/python3` when that virtualenv exists (set
+`PYTHON=...` to use another Python).
+
 Other targets: `make art` regenerates `art/*.png` from `tools/make_art.py`,
-`make art-check` checks they match, `make web-test` runs the browser smoke
-test (see [`web/tests/`](web/tests)), and `make DEBUG=1` builds with debug
-information for Emulicious into `build/debug/`. The Makefile finds GBDK in
+`make art-check` checks they match, and `make DEBUG=1` builds with debug
+information for Emulicious into `build/debug/`. `make web-test` runs the
+browser smoke test; it needs Node 18+ and a one-time
+`cd web/tests && npm ci && npx playwright install chromium` (see
+[`web/README.md`](web/README.md#test)). The Makefile finds GBDK in
 `tools/gbdk` or `/opt/gbdk`; pass `GBDK_HOME=/path/to/gbdk/` to use another
 install.
 
@@ -84,7 +92,7 @@ score) survives `make clean`.
 | State machine | `src/main.c` | Title, play, pause and game over. The game reads the joypad right after VBlank and runs its logic once per frame. |
 | World | `src/world.c` | The ground scrolls with the `SCX` register. New crate columns are written into the tile map just off-screen, and `col_height[]` mirrors them for tile-based collision. An LYC interrupt splits the screen into three bands: a static score bar, a slow sky with drifting, bobbing clouds, and the fast world. |
 | Panda | `src/player.c` | 8.8 fixed-point physics, the double jump, the jump buffer, animation and dust puffs. The panda is a 16×16 metasprite. |
-| HUD | `src/hud.c` | Score in the background map, high score in the window, messages and `PRESS START` as sprite text. |
+| HUD | `src/hud.c` | Score in the background map, high score in the window, `SCORE` / `NEW BEST!` and `PAUSED` as background text, and `GAME OVER` / `PRESS START` as sprite text. |
 | Save | `src/save.c` | Two checksummed slots in cartridge RAM with a sequence number, so a power cut mid-save can't lose the old best. |
 | Sound | `src/sound.c` | A small table-driven driver: effects on channels 1 and 4, and two looping tunes on channels 2 and 3. |
 | Art | `tools/make_art.py` → `art/*.png` → `png2asset` | Every sprite and tile is drawn by hand as a text grid in the script, which writes 4-colour PNGs. The build converts them with `png2asset`. Edit the script, not the PNGs. `tools/preview_art.py` renders previews and mock screens. |

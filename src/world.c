@@ -2,7 +2,7 @@
    column generator, clouds in the sky band, and box collision.
 
    Map rows (docs/DESIGN.md): 0-1 HUD, 2-5 sky band (clouds, title logo),
-   6-9 sky (and the messages, rows 7-9), 10-13 boxes, 14 grass, 15-16
+   6-9 sky (messages on row 7 or 8), 10-13 boxes, 14 grass, 15-16
    ground, 17 ground under the window, 18-31 never written after
    world_init (plain sky, used to hide the logo wipe). The ground repeats
    every 2 tiles, which divides the 32-tile map, so it is written once and

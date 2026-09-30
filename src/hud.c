@@ -5,7 +5,7 @@
    - High score: the window's single visible row (WY = 136), light font on
      the dark HUD colour, e.g. "HI 0042".
    - Messages (SCORE / NEW BEST!, PAUSED): dark font written into the
-     world band's always-sky rows 7-9 while the world stands still, centred
+     world band's always-sky row 7 (score) or 8 (PAUSED) while the world stands still, centred
      at its current scroll.
    - PRESS START (title and game over) and GAME OVER: sprites, using a copy
      of the dark font's letters. The world band scrolls under the title's

@@ -421,9 +421,8 @@ async function desktopChecks(browser, url, syms, problems) {
 }
 
 // On a fresh browser: a tab opened in the background (hidden, so its game
-// hasn't started), then three tabs opened together (a game may write a
-// fresh save block when it boots on a blank cartridge, the same in each
-// tab), then a real new best in one of them. Before the fixes the three
+// hasn't started), then three tabs opened together, then a real new best
+// in one of them. Before the fixes the three
 // tabs caught the false "played in another tab" about 8 runs in 10 (it
 // depends on the order the saves land in), and the background tab every
 // time.

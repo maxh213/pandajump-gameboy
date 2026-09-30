@@ -4,7 +4,7 @@
 #   make run        build, then play it in mGBA (from play/, so the save survives make clean)
 #   make test       build, then run the headless test suite (needs PyBoy, see requirements-dev.txt)
 #   make web        build, then copy the ROM into web/ for the browser player
-#   make web-test   make web, then run the browser smoke test (see web/tests/)
+#   make web-test   make web, then run the browser smoke test (setup: web/README.md#test)
 #   make art        regenerate art/*.png from tools/make_art.py (the art's source)
 #   make art-check  check art/*.png match tools/make_art.py
 #   make DEBUG=1    build with debug info for Emulicious into build/debug/
@@ -24,7 +24,8 @@ endif
 LCC       := $(GBDK_HOME)/bin/lcc
 PNG2ASSET := $(GBDK_HOME)/bin/png2asset
 MGBA      ?= mgba-qt
-PYTHON    ?= python3
+# The README's virtualenv, when there is one.
+PYTHON    ?= $(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3)
 
 NAME  := pandajump
 BUILD := build
@@ -109,6 +110,9 @@ web: $(ROM)
 	cp $(ROM) web/$(NAME).gb
 
 web-test: web
+	@test -d web/tests/node_modules/playwright || { \
+	  echo "The smoke test needs Playwright. Once: cd web/tests && npm ci && npx playwright install chromium"; \
+	  exit 1; }
 	cd web/tests && npm test
 
 art:

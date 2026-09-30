@@ -18,13 +18,15 @@ def pytest_configure(config):
 
 @pytest.fixture(scope="session")
 def rom() -> Path:
-    """build/pandajump.gb, (re)built with `make` when GBDK is available.
+    """build/pandajump.gb, brought up to date with `make` first.
 
     `make test` has already built it, so this is a no-op there; running
-    pytest on its own still tests the current sources."""
-    lcc = Path("/opt/gbdk/bin/lcc")
-    if shutil.which("make") and (lcc.exists() or (ROOT / "tools/gbdk/bin/lcc").exists()):
-        r = subprocess.run(["make", "-s", "all"], cwd=ROOT, capture_output=True, text=True)
+    pytest on its own still tests the current sources. The Makefile only
+    needs GBDK when something is out of date, which is exactly when testing
+    the old ROM would be wrong. DEBUG=0 builds the release ROM the tests
+    read even under `make DEBUG=1 test`."""
+    if shutil.which("make"):
+        r = subprocess.run(["make", "-s", "all", "DEBUG=0"], cwd=ROOT, capture_output=True, text=True)
         if r.returncode != 0:
             pytest.fail("make failed:\n" + r.stdout + r.stderr)
     if not ROM.exists() or not SYM.exists():

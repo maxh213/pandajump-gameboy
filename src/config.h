@@ -159,7 +159,7 @@
 /* ---- Clouds in the sky band -------------------------------------------- */
 #define CLOUD_SHIFT     2   /* sky scrolls at world speed >> 2 (1/4) */
 #define CLOUD_GAP_MIN   3   /* empty sky columns between clouds: 3 ... */
-#define CLOUD_GAP_RAND  7   /* ... plus 0..7 (bit mask). About 4-8 s apart */
+#define CLOUD_GAP_RAND  7   /* ... plus 0..7 (bit mask). About 2-7 s apart */
 #define CLOUD_BOB_FRAMES 12 /* frames per step of the bob cycle (16 steps) */
 
 /* ---- Animation and timing ---------------------------------------------- */

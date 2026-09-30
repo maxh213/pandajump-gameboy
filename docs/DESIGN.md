@@ -29,7 +29,7 @@ that depends on it.
 | Lines   | Tile rows | Band  | Horizontal scroll (`SCX`) | `SCY` |
 |---------|-----------|-------|---------------------------|-------|
 | 0–15    | 0–1       | HUD   | 0 (static)                | 0 |
-| 16–47   | 2–5       | Sky   | `cloud_scx` (slow parallax) | `cloud_bob`, 0–4 |
+| 16–47   | 2–5       | Sky   | `sky_scx` (slow parallax) | `sky_bob`, 0–4 |
 | 48–135  | 6–16      | World | `world_scx` (the run)     | 0 |
 | 136–143 | —         | Window (bottom HUD, `WY=136`, `WX=7`) | — | — |
 
@@ -45,8 +45,8 @@ that depends on it.
 - Tile row 1 holds the score (top-left). The sky band only ever bobs
   *down* (`SCY` 0–4), so it can read into tile row 6 (always sky) but never
   into the HUD rows.
-- World band rows: 6–9 are sky, never boxes (rows 7–9 also take the
-  messages, see "Gameplay"); 10–13 hold boxes (a 1-box column fills rows
+- World band rows: 6–9 are sky, never boxes (row 7 takes the game-over
+  score line and row 8 `PAUSED`, see "Gameplay"); 10–13 hold boxes (a 1-box column fills rows
   12–13, a 2-box column rows 10–13); row 14 is the grass top of the
   ground; rows 15–16 are ground. **Ground surface `GROUND_Y` = 112** (top
   of row 14). Ground and grass repeat every 2 tiles, which divides the
@@ -227,10 +227,12 @@ lines; the tests parse them.
   are written into sky-band columns off-screen, at a fixed height (map
   rows 3–4; rows 2–3 would let the downward bob clip the cloud's top
   against the static HUD band) every few seconds. Row 5 stays plain sky
-  (`GAME OVER` goes there). The band bobs gently with `cloud_bob`.
+  (`GAME OVER` goes there). The band bobs gently with `sky_bob` (`sky_scx`
+  and `sky_bob` are statics in `world.c`, latched in VBlank).
 
 Messages (`SCORE` / `NEW BEST!`, `PAUSED`; one at a time) are BG text in
-world rows 7–9, written only while the world is frozen. Row 6 stays plain
+world row 7 (`OVER_SCORE_ROW`) or row 8 (`PAUSED`), written only while the
+world is frozen; row 9 stays sky. Row 6 stays plain
 sky because the bobbing sky band reads into it.
 
 The game-over screen (constants in `src/config.h`), lines 12 px apart:

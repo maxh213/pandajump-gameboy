@@ -1,6 +1,7 @@
 # Build output and local tools
 /build/
 /play/
+/_site/
 /tools/gbdk/
 /.claude/worktrees/
 

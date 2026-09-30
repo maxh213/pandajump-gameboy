@@ -1,4 +1,4 @@
-/* Text: score, high score, messages and the title's PRESS START. */
+/* Text: score, high score, messages, and the PRESS START / GAME OVER sprites. */
 #ifndef HUD_H
 #define HUD_H
 
@@ -11,7 +11,7 @@ void hud_high(uint16_t value);    /* window: "HI 0042" (drawn after vsync) */
 void hud_vram(void);              /* right after vsync: redraw what changed */
 
 /* One message at a time (SCORE / NEW BEST!, PAUSED) in the world band's
-   always-sky rows 7-9, centred on the screen at the current (frozen)
+   always-sky row 7 (score) or 8 (PAUSED), centred on the screen at the current (frozen)
    scroll, drawn after the next vsync. A new one replaces the old one,
    which is remembered so it can be erased. */
 void hud_message(uint8_t row, const char *text);

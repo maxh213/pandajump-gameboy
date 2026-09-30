@@ -794,8 +794,7 @@
     // Another tab saved. If its save differs from the cartridge RAM here,
     // carrying on could overwrite a better score with this tab's older one,
     // so stop and offer a reload. Two cases are no conflict:
-    //   - the same save (tabs opened together, each game writing the same
-    //     fresh save block when it boots on a blank cartridge);
+    //   - the same save as the cartridge RAM here (nothing to lose);
     //   - a game here that hasn't run a single tick (a tab opened or
     //     restored in the background, or one still waiting for its first
     //     frame): it hasn't read its RAM yet, so it simply starts from the

@@ -8,12 +8,13 @@ from its `#define` lines, never copied).
 
 ```sh
 make test                      # builds the ROM, then python3 -m pytest -q tests
-python3 -m pytest -q tests     # same; runs `make` first when GBDK is installed
+python3 -m pytest -q tests     # same; runs `make` first, so it always tests the current sources
 python3 -m pytest -q tests/test_physics.py -k double
 ```
 
 Needs Python 3 with `pyboy==2.7.0`, `numpy`, `pillow` and `pytest`
-(`requirements-dev.txt`). The whole suite takes about 40 s and uses no
+(`requirements-dev.txt`; see the README's "Build it" for a virtualenv).
+The whole suite takes under a minute and uses no
 wall-clock timing, so it gives the same result on every run. Each test runs
 on its own copy of the ROM, `.sym` and battery RAM in a pytest temp
 directory, so the tests don't share save files and nothing is written to the
