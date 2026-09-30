@@ -15,6 +15,11 @@ that depends on it.
   bank, DMG only. Title `PANDAJUMP`.
 - Art in `art/*.png` is converted by `png2asset` into `build/res/*.c/.h`
   during the build. Nothing in `build/` is committed.
+- The art's source is the text grids in `tools/make_art.py`. The PNGs are
+  generated from them (`make art`) and committed with them; never edit a
+  PNG by hand. `tools/make_art.py --check` compares the committed PNGs'
+  pixels and palettes with the grids, writes nothing, and fails on any
+  difference (for CI).
 - The link step writes `build/pandajump.map`, `.noi` and `.sym` (RGBDS
   format, used by the tests to find variables).
 

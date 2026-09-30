@@ -2,9 +2,19 @@
 """Hand-pixelled art for PandaJump GB: writes art/*.png from the text grids below.
 
 Every image is drawn here as text, one character per pixel, so the art can be
-reviewed and diffed like code. After editing a grid, run `make art` (or this
-script), then `python3 tools/preview_art.py` to see the result with the
-in-game shades and in a mock game screen.
+reviewed and diffed like code. This file is the source of the art: the PNGs
+are generated from it and committed, and are never edited by hand (a hand
+edit is lost at the next `make art`). After editing a grid, run `make art`
+(or this script), then `tools/preview_art.py` to see the result with the
+in-game shades and in mock game screens, and commit the PNGs with the grids.
+
+  tools/make_art.py            # write the PNGs whose pixels or palette changed
+  tools/make_art.py --check    # compare art/*.png with the grids; write nothing,
+                               # exit 1 listing any difference (for CI)
+
+Both compare what the game sees (palette indices and palette), not PNG bytes,
+which differ between Pillow versions. An unchanged PNG is not rewritten, so
+`make art` alone doesn't force a ROM rebuild.
 
 Output format (docs/DESIGN.md): indexed PNGs with exactly 4 palette entries,
 where the palette index is the Game Boy colour number. File names, sizes and
@@ -25,6 +35,8 @@ looks the same in every image:
     '+'  index 2, shade 1 (grey shading)
     '#'  index 3, shade 3 (black fur and outline)
 """
+import argparse
+import sys
 from pathlib import Path
 
 from PIL import Image
@@ -67,11 +79,6 @@ def tile_xy(index):
     """Top-left pixel of a tile in the 16-tiles-wide bg_tiles.png."""
     return (index % 16) * 8, (index // 16) * 8
 
-
-def save(im, name, size):
-    assert im.size == size, (name, im.size)
-    assert len(im.getpalette()) == 4 * 3, name  # exactly 4 entries
-    im.save(ART / name)
 
 
 def check_outlined(rows, what):
@@ -299,7 +306,7 @@ def panda():
         rows = grid(text, 16, 16)
         check_outlined(rows, f"panda frame {f}")
         draw(im, f * 16, 0, rows, SPRITE_KEY)
-    save(im, "panda.png", (160, 16))
+    return im
 
 
 # --------------------------------------------------------------------------
@@ -361,7 +368,7 @@ def fx():
     for f, text in enumerate(FX):
         rows = grid(text, 8, 8)
         draw(im, f * 8, 0, rows, SPRITE_KEY)
-    save(im, "fx.png", (32, 8))
+    return im
 
 
 # --------------------------------------------------------------------------
@@ -952,7 +959,7 @@ def bg_tiles():
     put_tiles(im, 116, HUD_DARK, 8, 8)
     for i, ch in enumerate(LIGHT_FONT_PUNCT):
         put_tiles(im, 117 + i, "\n".join(glyph_tile(ch, ".", "#")), 8, 8)
-    save(im, "bg_tiles.png", (128, 64))
+    return im
 
 
 # --------------------------------------------------------------------------
@@ -1205,13 +1212,104 @@ def title_logo():
     assert all(0 < x < w - 1 and 0 < y < h - 1 for x, y in set(solid) | depth), "logo does not fit"
     im = new_image(w, h)
     draw(im, 0, 0, out, BG_KEY)
-    save(im, "title_logo.png", (w, h))
+    return im
+
+
+# --------------------------------------------------------------------------
+# Output
+
+# Every file in art/, its size (fixed by the contract) and what draws it.
+IMAGES = {
+    "bg_tiles.png": ((128, 64), bg_tiles),
+    "panda.png": ((160, 16), panda),
+    "fx.png": ((32, 8), fx),
+    "title_logo.png": ((144, 32), title_logo),
+}
+
+
+def render_all():
+    """Every art image, drawn in memory: {file name: image}."""
+    out = {}
+    for name, (size, draw_image) in IMAGES.items():
+        im = draw_image()
+        assert im.size == size, (name, im.size)
+        assert len(im.getpalette()) == 4 * 3, name  # exactly 4 entries
+        out[name] = im
+    return out
+
+
+def differences(im, path):
+    """How the PNG at `path` differs from `im` in what the game sees: the
+    pixels' palette indices and the palette. [] when they match. PNG bytes
+    are not compared, since Pillow versions encode the same pixels
+    differently."""
+    if not path.exists():
+        return ["missing"]
+    try:
+        with Image.open(path) as disk:
+            disk.load()
+    except Exception as e:                  # not a PNG, truncated, ...
+        return [f"unreadable ({e})"]
+    if disk.mode != "P":
+        return [f"mode {disk.mode}, expected an indexed (P) image"]
+    if disk.size != im.size:
+        return ["size {}x{}, expected {}x{}".format(*disk.size, *im.size)]
+    out = []
+    if disk.getpalette() != im.getpalette():
+        out.append("palette differs")
+    a, b = disk.tobytes(), im.tobytes()
+    if a != b:
+        diff = [i for i in range(len(a)) if a[i] != b[i]]
+        out.append(f"{len(diff)} pixel(s) differ, the first at x={diff[0] % im.width} "
+                   f"y={diff[0] // im.width}")
+    return out
+
+
+def check(images):
+    """--check: compare art/ with the grids, write nothing. 0 if they match."""
+    problems = []
+    for name, im in images.items():
+        problems += [f"art/{name}: {d}" for d in differences(im, ART / name)]
+    for path in sorted(ART.glob("*.png")):
+        if path.name not in images:
+            problems.append(f"art/{path.name}: not drawn by tools/make_art.py")
+    if problems:
+        print("art/ does not match tools/make_art.py:", file=sys.stderr)
+        for p in problems:
+            print(f"  {p}", file=sys.stderr)
+        print("The grids in tools/make_art.py are the source: edit them (never the PNGs), "
+              "then run `make art` and commit the PNGs with them.", file=sys.stderr)
+        return 1
+    print(f"art/ matches tools/make_art.py ({len(images)} images)")
+    return 0
+
+
+def write(images):
+    """Write the PNGs whose pixels or palette changed. An unchanged file is
+    left alone, so its mtime stays and `make` doesn't rebuild the ROM."""
+    ART.mkdir(exist_ok=True)
+    written = []
+    for name, im in images.items():
+        if differences(im, ART / name):
+            im.save(ART / name)
+            written.append(f"art/{name}")
+    print(f"wrote {' '.join(written)}" if written else "art/ is up to date")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(
+        description="Write art/*.png from the text grids in this file.")
+    ap.add_argument("--check", action="store_true",
+                    help="compare art/*.png with the grids (pixels and palette) and exit "
+                         "non-zero, listing the differences, if they don't match; "
+                         "writes nothing")
+    args = ap.parse_args(argv)
+    images = render_all()
+    if args.check:
+        return check(images)
+    write(images)
+    return 0
 
 
 if __name__ == "__main__":
-    ART.mkdir(exist_ok=True)
-    bg_tiles()
-    panda()
-    fx()
-    title_logo()
-    print("wrote art/bg_tiles.png art/panda.png art/fx.png art/title_logo.png")
+    sys.exit(main())
