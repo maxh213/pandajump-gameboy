@@ -793,14 +793,32 @@
 
     // Another tab saved. If its save differs from the cartridge RAM here,
     // carrying on could overwrite a better score with this tab's older one,
-    // so stop and offer a reload. The same save (two tabs opened together,
-    // each writing the blank save block at boot) is no conflict.
+    // so stop and offer a reload. Two cases are no conflict:
+    //   - the same save (tabs opened together, each game writing the same
+    //     fresh save block when it boots on a blank cartridge);
+    //   - a game here that hasn't run a single tick (a tab opened or
+    //     restored in the background, or one still waiting for its first
+    //     frame): it hasn't read its RAM yet, so it simply starts from the
+    //     other tab's save. Once it has run, it may have read the RAM, and
+    //     only a reload is safe.
     onStorage(event) {
       if (event.key !== KEY_SAVE || event.newValue === null || event.newValue === this.lastSaved) return;
       if (this.state === 'loading' || this.state === 'stopped') return;
       if (event.newValue === bytesToBase64(this.gb.readExtRam())) {
         this.lastSaved = event.newValue;
         return;
+      }
+      if (this.gb.ticks === 0) {
+        let bytes = null;
+        try {
+          bytes = base64ToBytes(event.newValue);
+        } catch (err) {
+          // unreadable: handled as a conflict below
+        }
+        if (bytes && this.gb.writeExtRam(bytes)) {
+          this.lastSaved = event.newValue;
+          return;
+        }
       }
       this.saveBlocked = true;
       this.stop();

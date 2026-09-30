@@ -81,8 +81,11 @@ stick.
   before the game starts, written whenever the game writes to it, and again
   when the page is hidden or closed. If another tab saves something different
   from this tab's cartridge RAM, this tab stops and offers a reload, so an
-  older copy can't overwrite a newer high score. (Tabs opened together each
-  write the same blank save when the game first boots; that is no conflict.)
+  older copy can't overwrite a newer high score. Two cases are no conflict:
+  the same save (a game that boots on a blank cartridge may write a fresh
+  save block, the same in every tab opened together), and a tab whose game
+  hasn't run yet, such as one opened or restored in the background: it
+  hasn't read its cartridge RAM, so it simply starts from the newer save.
 - **Pausing.** Emulation pauses while the tab is hidden. Coming back in the
   middle of a game waits for a button press (which doesn't also jump).
 - **Settings.** The screen palette and the sound on/off switch (`M`) are
