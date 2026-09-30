@@ -174,7 +174,9 @@ lines; the tests parse them.
   (single or double column counts once). High score is updated and saved
   when the run ends.
 - RNG: `rand()`/`initrand()`, seeded from `DIV` on the first button press
-  on the title screen.
+  on the title screen, then stirred (one `rand()` per frame) while the
+  title stays up, so a run depends on when Start came too. A button held
+  since power-on is not a press until it is released and pressed again.
 - Clouds live in the sky band's map and scroll at a fraction of the world
   speed; new clouds are written into sky-band columns off-screen, at a
   fixed height (map rows 3–4; rows 2–3 would let the downward bob clip the
@@ -192,7 +194,8 @@ sky because the bobbing sky band reads into it.
 
 - Title: logo, running panda, `PRESS START`, high score. Start or A begins.
 - Play: A jumps / double jumps. Start pauses (`STATE_PAUSED`, shows
-  `PAUSED`); Start again resumes.
+  `PAUSED`, the music holds its place with `music_pause()`); Start again
+  resumes (`music_resume()`, unless the music was switched off).
 - Dead: death pose and fall, `GAME OVER`, score, `NEW BEST!` when it is.
   After a short delay Start or A starts a new run.
 

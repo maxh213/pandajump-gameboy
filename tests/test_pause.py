@@ -96,3 +96,36 @@ def test_start_resumes_where_it_left_off(make_game, cfg):
     g.tick(1)
     assert g.bg_row(8) == [cfg.T_SKY] * 32, "PAUSED not cleared"
     assert g.u16("world_x") == wx + 61
+
+
+def test_pause_holds_the_music_and_resume_continues_it(make_game, cfg):
+    """Pausing silences the music without losing its place (music_pause),
+    and resuming carries on from there (music_resume) instead of starting
+    the song again from the top (music_play)."""
+    NR51, CH2, CH3 = 0xFF25, 0x22, 0x44
+    g = make_game(sound=True)
+    g.start_run(invincible=True)
+    g.tick(30)
+    calls = []
+    for name in ("music_play", "music_stop", "music_pause", "music_resume"):
+        _bank, addr = g.pb.symbol_lookup("_" + name)
+        g.pb.hook_register(0, addr, calls.append, name)
+
+    def levels(n):
+        out = []
+        for _ in range(n):
+            g.tick()
+            a = np.asarray(g.pb.sound.ndarray).astype(np.int32)
+            out.append(int(a.max() - a.min()) if a.size else 0)
+        return out
+
+    g.pb.memory[NR51] = CH2 | CH3                 # only the music channels
+    assert max(levels(60)) > 0, "no music before the pause"
+    g.tap("start")
+    assert g.state() == cfg.STATE_PAUSED
+    g.tick(10)                                    # the last note fades out
+    assert max(levels(60)) == 0, "music still audible while paused"
+    g.tap("start")
+    assert g.state() == cfg.STATE_PLAY
+    assert max(levels(60)) > 0, "the music did not come back after the pause"
+    assert calls == ["music_pause", "music_resume"]

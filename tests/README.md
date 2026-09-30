@@ -56,8 +56,5 @@ renders the last two frames.
 
 Tests for bugs in the game are kept and marked
 `xfail(strict=True, reason="BUG <id>: ...")`; when the bug is fixed the test
-passes, the strict xfail fails, and the marker should be removed.
-
-- `logic-starts-before-line-1` (`test_frames.py`): the wait loop in `main()`
-  reads LY twice, so the frame's logic often starts on line 0 (or 153)
-  instead of line 1.
+passes, the strict xfail fails, and the marker should be removed. There are
+none at the moment.

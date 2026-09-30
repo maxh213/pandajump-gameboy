@@ -98,8 +98,12 @@ static void title_state(void) {
         prompt_shown = !prompt_shown;
         hud_prompt(prompt_shown);
     }
-    if (pressed && !rng_seeded) {
-        /* DIV is effectively random by the time a person presses a button. */
+    if (rng_seeded) {
+        rand();                   /* stir: the run also depends on when Start comes */
+    } else if (pressed) {
+        /* The only entropy is when the player presses: the joypad and DIV
+           are read at the same point of every frame, so this seed is a
+           function of the press frame. */
         initrand(((uint16_t)DIV_REG << 8) | frame_count);
         rng_seeded = 1;
     }
@@ -116,7 +120,7 @@ static void play_state(void) {
 
     if (pressed & J_START) {
         sfx_pause();
-        music_stop();
+        music_pause();            /* silent, but keeps its place in the song */
         hud_message(0, 8, "PAUSED");
         game_state = STATE_PAUSED;
         return;
@@ -154,7 +158,7 @@ static void paused_state(void) {
     if (pressed & J_START) {
         hud_message_clear(0);
         sfx_pause();
-        if (music_on) music_play(MUSIC_GAME);
+        if (music_on) music_resume();
         game_state = STATE_PLAY;
     }
 }
@@ -178,6 +182,7 @@ static void dead_state(void) {
 
 void main(void) {
     uint8_t joy;
+    uint8_t ly;
 
     DISPLAY_OFF;
     BGP_REG = 0xE4;
@@ -208,6 +213,11 @@ void main(void) {
     SHOW_SPRITES;
     DISPLAY_ON;
 
+    /* A button held since power-on is not a press: it has to be released
+       and pressed again (otherwise it would skip the title, and with the
+       same seed every time). */
+    joy_prev = joypad();
+
     while (1) {
         vsync();
         /* Sample the buttons at the same moment every frame (the start of
@@ -222,12 +232,15 @@ void main(void) {
         joy_prev = joy;
 
         /* Run the game logic in the visible part of the frame, from line 1
-           (LY also reads 0 during line 153). This costs a few idle lines
-           but keeps each frame's RAM changes together within one emulator
-           frame, so headless tests see whole frames and a fixed input
-           latency. */
+           (LY also reads 0 during most of line 153). This costs a few idle
+           lines but keeps each frame's RAM changes together within one
+           emulator frame, so headless tests see whole frames and a fixed
+           input latency. LY is read once per test: reading it twice could
+           see 153 and then 0 and leave during line 153. */
         if (LCDC_REG & LCDCF_ON) {
-            while (LY_REG == 0 || LY_REG >= 144) {}
+            do {
+                ly = LY_REG;
+            } while (ly == 0 || ly >= 144);
         }
 
         switch (game_state) {

@@ -4,8 +4,7 @@ Frame timing (measured, and matching docs/DESIGN.md):
 
 - One ``tick()`` is one Game Boy frame. PyBoy's frame boundary is at the
   start of line 0, so within tick *k* the game runs its logic for frame *k*
-  (meant to start on line 1; it often starts on line 0, see
-  test_frames.py), then in VBlank (line 144) it reads the joypad, bumps
+  (from line 1, see test_frames.py), then in VBlank (line 144) it reads the joypad, bumps
   ``frame_count`` and writes the tiles that logic queued. When there are
   many tiles the writes run on into the first lines of tick *k+1*.
 - After tick *k*: RAM holds the result of frame *k*'s logic, VRAM holds the

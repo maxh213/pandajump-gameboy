@@ -70,6 +70,13 @@ static void lcd_isr(void) {
 #define NO_COLUMN 0xFF
 #define CLOUD_ROW 3                  /* clouds use map rows 3-4 (see below) */
 
+/* One queued column of each kind is enough: below 8 px per frame the world
+   crosses at most one tile boundary per frame (the sky, at a quarter of
+   the speed, even fewer), and the queue is emptied every VBlank. */
+#if SPEED_MAX >= 2048
+#error "SPEED_MAX must stay below 8 px/frame: one new column per frame"
+#endif
+
 static uint8_t box_col = NO_COLUMN;  /* map column to write, rows 10-13 */
 static uint8_t box_tiles[4];
 static uint8_t sky_col = NO_COLUMN;  /* map column to write, rows 2-5 */
@@ -146,8 +153,6 @@ static void gen_column(void) {
     uint16_t tile = gen_tile + 21;   /* first column fully off-screen right */
     uint8_t col = (uint8_t)tile & 31;
     uint8_t h = 0;
-
-    if (box_col != NO_COLUMN) world_vram();  /* never at <= 8 px/frame */
 
     if (!gen_cols) {
         if (gen_gap) {
@@ -258,7 +263,6 @@ static const uint8_t bob_table[16] = {
 static void sky_column(void) {
     uint8_t i;
 
-    if (sky_col != NO_COLUMN) world_vram();
     sky_tiles[0] = T_SKY;
     sky_tiles[1] = T_SKY;
     sky_tiles[2] = T_SKY;

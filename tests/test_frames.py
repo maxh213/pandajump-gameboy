@@ -108,8 +108,6 @@ def test_one_frame_count_per_frame_and_vsync_in_time(make_game, cfg):
     assert not late, f"logic still running at VBlank (name, frame, line, LY, state): {late[:10]}"
 
 
-@pytest.mark.xfail(strict=True, reason="BUG logic-starts-before-line-1: the wait loop in main() "
-                   "reads LY twice, so it can leave during line 153/0 instead of line 1")
 def test_logic_starts_on_line_1_or_later(make_game, cfg):
     """docs/DESIGN.md: "the game reads the joypad right after VBlank and runs
     its logic from line 1". The first thing each state's logic calls

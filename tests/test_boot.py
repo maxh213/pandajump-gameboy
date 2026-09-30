@@ -133,6 +133,42 @@ def test_same_press_frame_same_obstacles(make_game):
     assert first_obstacles(make_game, 5, "a") == first_obstacles(make_game, 5, "b")
 
 
+def obstacles_after_select(make_game, gap, name, count=8):
+    """Select on the title (seeds the RNG), then Start `gap` frames later."""
+    g = make_game(name=name)
+    g.tap("select")
+    g.tap("select")                   # music off and on again
+    g.tick(gap)
+    g.start_run(invincible=True)
+    wmap = WorldMap()
+    while len(wmap.obstacles()) < count:
+        record_world(g, 64, wmap)
+    return [(o.start, o.width, o.height) for o in wmap.obstacles()[:count]]
+
+
+def test_rng_is_stirred_while_the_title_is_up(make_game):
+    """The seed comes from the first press on the title, but the run's
+    obstacles also depend on how long the title stayed up after it."""
+    runs = [obstacles_after_select(make_game, gap, f"s{gap}") for gap in (0, 1, 17)]
+    assert runs[0] != runs[1] and runs[1] != runs[2] and runs[0] != runs[2]
+
+
+@pytest.mark.parametrize("button", ["start", "a"])
+def test_button_held_from_power_on_is_not_a_press(make_game, cfg, button):
+    """A button held through power-on neither skips the title nor seeds
+    the RNG: it has to be released and pressed again."""
+    g = make_game(boot=False)
+    g.hold(button)
+    g.boot()
+    g.tick(120)
+    assert g.state() == cfg.STATE_TITLE, "a held button started a run"
+    g.release(button)
+    g.tick(3)
+    assert g.state() == cfg.STATE_TITLE
+    g.start_run(button)
+    assert g.state() == cfg.STATE_PLAY
+
+
 def test_press_start_blinks_every_blink_frames(game, cfg):
     shown = []
     for _ in range(6 * cfg.BLINK_FRAMES):
