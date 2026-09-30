@@ -184,9 +184,9 @@ lines; the tests parse them.
   `(start >> 3) + 22`.
 - Obstacles: a column is 2 tiles wide with 1 or 2 boxes (2 boxes with
   probability `TALL_CHANCE`/256, one half; a run's first obstacle is
-  always 1 box). Once the score is above `DOUBLE_SCORE` (10), `DOUBLE_CHANCE`
-  /256 (one in three) of obstacles are double columns (two columns side by
-  side, same height). After each obstacle the generator leaves
+  always 1 box). Once the score is above `DOUBLE_SCORE` (10),
+  `DOUBLE_CHANCE`/256 (one in three) of obstacles are double columns (two
+  columns side by side, same height). After each obstacle the generator leaves
   `SPACING - 2` empty tiles plus a random extra (`rand() & SPACING_RAND`,
   0–3), so single columns start `SPACING` tiles apart and a double column
   is followed by `SPACING + 2`. `src/config.h` derives the smallest safe
@@ -209,17 +209,18 @@ lines; the tests parse them.
   run's boxes; they are rewritten before they scroll into view.)
 - Score: +1 when an obstacle's right edge passes the left edge of the
   panda's hitbox, `PANDA_X + HIT_X0` on screen (from then on it can't be
-  hit; a single or double column counts once). High score is updated and saved
-  when the run ends.
+  hit; a single or double column counts once). High score is updated and
+  saved when the run ends.
 - RNG: `rand()`/`initrand()`, seeded from `DIV` on the first button press
   on the title screen, then stirred (one `rand()` per frame) while the
   title stays up, so a run depends on when Start came too. A button held
   since power-on is not a press until it is released and pressed again.
 - Clouds live in the sky band's map and scroll at a fraction of the world
   speed; new clouds (the big 32×16 one or the small 24×16 one, at random)
-  are written into sky-band columns off-screen, at a fixed height (map rows 3–4; rows 2–3 would let the downward bob clip the
-  cloud's top against the static HUD band) every few seconds. The band bobs
-  gently with `cloud_bob`.
+  are written into sky-band columns off-screen, at a fixed height (map
+  rows 3–4; rows 2–3 would let the downward bob clip the cloud's top
+  against the static HUD band) every few seconds. Row 5 stays plain sky
+  (`GAME OVER` goes there). The band bobs gently with `cloud_bob`.
 
 Messages (`SCORE` / `NEW BEST!`, `PAUSED`; one at a time) are BG text in
 world rows 7–9, written only while the world is frozen. Row 6 stays plain
@@ -294,9 +295,9 @@ Plain (non-`static`) globals, found through `build/pandajump.sym`
 screen pixels), `panda_vy` (8.8, positive is down), `panda_on_ground`,
 `jumps_used`, `jump_buffer` (frames a kept press has left, 0 if none),
 `world_x` (`uint16_t`, whole pixels scrolled, from 0–15 at the start of a
-run, see "Scroll"), `world_sub`
-(`uint8_t`, the fraction of a pixel in 1/256ths), `world_scx`,
-`col_height[32]`, `frame_count` (`uint8_t`, +1 per frame),
+run, see "Scroll"), `world_sub` (`uint8_t`, the fraction of a pixel in
+1/256ths), `world_scx`, `col_height[32]`, `frame_count` (`uint8_t`, +1
+per frame),
 `debug_invincible` (`uint8_t`, 0 in normal play; when a test sets it,
 collisions are ignored), `world_speed` (8.8 px/frame, shows the ramp).
 
