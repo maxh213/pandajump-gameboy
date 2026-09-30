@@ -236,7 +236,11 @@ The game-over screen (constants in `src/config.h`), lines 12 px apart:
 
 The glyphs are 7 px tall, so that leaves 5 px of sky between the lines
 and 5 px above y 80, the top of a 2-box column: the column the panda ran
-into always stands right under the text.
+into always stands right under the text. BG text can only start on the
+map's 8 px grid, so the score line's centre is up to 4 px off the
+screen's (−3 to +4); `GAME OVER` and `PRESS START` are moved by the same
+amount, so the three lines share one centre line. (With no message up,
+as on the title, sprite text is centred on the screen.)
 
 `GAME OVER` and the score appear together on the frame the dead panda has
 sunk out of sight (its death hop would cover them before that), 43–54

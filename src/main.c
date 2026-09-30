@@ -200,8 +200,9 @@ static void dead_state(void) {
     world_clouds(SPEED_BASE);     /* the sky keeps drifting */
     if (dead_phase == DEAD_FALLING) {
         if (player_sunk()) {
-            hud_game_over(1);
+            /* the score first: GAME OVER and PRESS START line up with it */
             hud_message_num(OVER_SCORE_ROW, new_best ? "NEW BEST! " : "SCORE ", score);
+            hud_game_over(1);
             dead_timer = 0;
             dead_phase = DEAD_TEXT;
         }

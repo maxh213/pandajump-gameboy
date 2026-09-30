@@ -95,12 +95,14 @@ def test_messages_wait_until_the_panda_has_sunk(make_game, cfg, where):
         assert find_text(g, cfg.OVER_SCORE_ROW, score_text, scx) is None, f"score {n} frames after dying"
     g.tick()
     assert not panda_on_screen(g, cfg)
-    text, x, y = sprite_text(g, cfg.OAM_OVER, cfg.OAM_OVER_END)
+    text, over_x, y = sprite_text(g, cfg.OAM_OVER, cfg.OAM_OVER_END)
     assert (text, y) == ("GAME OVER", cfg.OVER_TEXT_Y)
-    assert x + 4 * len(text) == 80, "GAME OVER is not centred"
     x = find_text(g, cfg.OVER_SCORE_ROW, score_text, scx)
     assert x is not None, "the score should be in the same frame's VBlank writes"
-    assert abs(x + 4 * len(score_text) - 80) <= 4, "the score is not centred"
+    # BG text starts on the map's 8 px grid: centred to the nearest column
+    centre = x + 4 * len(score_text)
+    assert -3 <= centre - 80 <= 4, "the score is not centred"
+    assert over_x + 4 * len(text) == centre, "GAME OVER is not centred on the score line"
     # The glyphs are 7 px tall (the font's bottom row is empty). Between the
     # lines, and between PRESS START and the top of a 2-box column (y 80,
     # and the column the panda ran into is always under the text), there
@@ -117,6 +119,9 @@ def test_press_start_comes_prompt_delay_frames_later_and_blinks(game, cfg):
     game.start_run()
     die_without_input(game)
     game.run_until(lambda g: sprite_text(g, cfg.OAM_OVER, cfg.OAM_OVER_END), 100, what="GAME OVER")
+    score_text = dark_text(cfg, "SCORE 0")
+    x = find_text(game, cfg.OVER_SCORE_ROW, score_text, game.u8("world_scx"))
+    prompt_x = x + 4 * len(score_text) - 4 * len("PRESS START")   # on the score's centre line
     for n in range(1, cfg.PROMPT_DELAY):
         game.tick()
         assert sprite_text(game, cfg.OAM_TEXT, cfg.OAM_TEXT_END) is None, f"PRESS START {n} frames early"
@@ -125,7 +130,7 @@ def test_press_start_comes_prompt_delay_frames_later_and_blinks(game, cfg):
         game.tick()
         p = sprite_text(game, cfg.OAM_TEXT, cfg.OAM_TEXT_END)
         if p:
-            assert p == ("PRESS START", 36, cfg.OVER_PROMPT_Y)
+            assert p == ("PRESS START", prompt_x, cfg.OVER_PROMPT_Y)
         shown.append(p is not None)
     on, off = cfg.BLINK_ON, cfg.BLINK_PERIOD - cfg.BLINK_ON
     assert shown == ([True] * on + [False] * off) * 3, "PRESS START should blink from when it appears"

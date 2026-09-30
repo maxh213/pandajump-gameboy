@@ -19,7 +19,9 @@ void hud_message_num(uint8_t row, const char *text, uint16_t value);
 void hud_message_clear(void);
 
 /* Sprite text (the world band scrolls, so these can't be BG text), with
-   a copy of the dark font's letters: */
+   a copy of the dark font's letters. Centred on the screen, or, while a
+   message is up, on the message's centre (BG text is on an 8 px grid), so
+   stacked lines line up: show the message first. */
 void hud_prompt(uint8_t y);       /* PRESS START at screen y, OAM_TEXT.. */
 void hud_prompt_hide(void);
 void hud_game_over(uint8_t show); /* GAME OVER at OVER_TEXT_Y, OAM_OVER.. */

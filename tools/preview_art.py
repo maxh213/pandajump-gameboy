@@ -202,23 +202,27 @@ def game_over_scene(tiles, panda, fx, t):
     """The end of a run as src/main.c and src/hud.c draw it, once the dead
     panda has sunk out of sight: GAME OVER in sprite text at OVER_TEXT_Y
     (under the clouds), the score as BG text in map row OVER_SCORE_ROW and
-    PRESS START in sprite text at OVER_PROMPT_Y, centred, over the boxes
-    the run ended at. (The panda and fx sheets are unused: nothing of the
-    panda is left on screen.)"""
+    PRESS START in sprite text at OVER_PROMPT_Y, over the boxes the run
+    ended at. The score is centred to the nearest map column (the world's
+    scroll is 0 here), and the sprite lines on its centre, as hud.c does.
+    (The panda and fx sheets are unused: nothing of the panda is left on
+    screen.)"""
     c = Canvas()
     for tx, ch in enumerate(text_tiles(t, "17")):
         c.tile(tiles, ch, 1 + tx, 1)
     cloud(c, tiles, t, 5, 3, yoff=-1)
     cloud(c, tiles, t, 16, 3, yoff=-1, small=True)
+    text = "NEW BEST! 17"
+    col = (84 - len(text) * 4) // 8
+    dx = col * 8 + len(text) * 4 - 80     # how far the score is off centre
+    for tx, ch in enumerate(text_tiles(t, text)):
+        c.tile(tiles, ch, col + tx, t["OVER_SCORE_ROW"])
     for text, y in (("GAME OVER", t["OVER_TEXT_Y"]), ("PRESS START", t["OVER_PROMPT_Y"])):
-        x = (160 - len(text) * 8) // 2
+        x = (160 - len(text) * 8) // 2 + dx
         for ch, tile in zip(text, text_tiles(t, text)):
             if ch != " ":
                 c.sprite_tile(tiles, tile, x, y)
             x += 8
-    text = "NEW BEST! 17"
-    for tx, ch in enumerate(text_tiles(t, text)):
-        c.tile(tiles, ch, (84 - len(text) * 4) // 8 + tx, t["OVER_SCORE_ROW"])
     box(c, tiles, t, 5, 10, variant=True)  # the 2-box column it ran into
     box(c, tiles, t, 5, 12)
     box(c, tiles, t, 5 + t["SPACING_MIN"], 12)   # the next one, coming in

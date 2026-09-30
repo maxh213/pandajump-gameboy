@@ -10,6 +10,7 @@
    - PRESS START (title and game over) and GAME OVER: sprites, using a copy
      of the dark font's letters. The world band scrolls under the title's
      prompt, and GAME OVER sits in the sky band, which drifts and bobs.
+     While a message is up they share its centre line (see text_dx).
 
    Background text is queued and written right after vsync (hud_vram), so
    it never changes while its rows are being drawn. */
@@ -43,6 +44,13 @@ static uint8_t next_col;
 static uint8_t next_len;                  /* 0: erase */
 static uint8_t next_tiles[MSG_MAX];
 static uint8_t msg_dirty;
+
+/* A message can only start on the map's 8 px grid, so its centre is up to
+   4 px off the screen's (-3..4). Sprite text is moved by the same amount,
+   so GAME OVER, the score and PRESS START line up on one centre line
+   instead of the middle line sitting a few pixels to one side. 0 when no
+   message is up (the title's PRESS START is centred on the screen). */
+static int8_t text_dx;
 
 static const uint16_t powers[4] = { 10000, 1000, 100, 10 };
 
@@ -166,6 +174,7 @@ void hud_message(uint8_t row, const char *text) {
     /* Map column c shows at screen x c*8 - world_scx; centre the text
        (rounded to the nearest column) on the 160 px screen. */
     next_col = (uint8_t)(world_scx + 84 - (len << 2)) >> 3;
+    text_dx = (int8_t)(uint8_t)((next_col << 3) - world_scx + (len << 2) - 80);
     next_row = row;
     next_len = len;
     msg_dirty = 1;
@@ -188,13 +197,14 @@ void hud_message_num(uint8_t row, const char *text, uint16_t value) {
 
 void hud_message_clear(void) {
     next_len = 0;
+    text_dx = 0;
     msg_dirty = 1;
 }
 
-/* Capital letters and spaces, centred on the screen at y, one sprite per
-   letter from OAM slot oam on. */
+/* Capital letters and spaces, centred on the screen (or on the message's
+   centre line) at y, one sprite per letter from OAM slot oam on. */
 static void sprite_text(uint8_t oam, uint8_t y, const char *text, uint8_t len) {
-    uint8_t x = (uint8_t)(160 - (len << 3)) >> 1;
+    uint8_t x = ((uint8_t)(160 - (len << 3)) >> 1) + (uint8_t)text_dx;
 
     for (; *text; text++, x += 8) {
         if (*text == ' ') continue;
