@@ -3,16 +3,20 @@ starting a run, and the RNG seeding (docs/DESIGN.md "States and controls",
 "Save RAM", "Gameplay")."""
 import pytest
 
-from gb import hud_hi_row, record_world, sram_block
+from gb import hud_hi_row, record_world
 from model import Scroll, WorldMap
 
 
-def test_boots_to_title(game, cfg):
-    """No battery file at all (PyBoy starts with blank RAM)."""
+def test_boots_to_title(make_game, cfg):
+    """No battery file at all (PyBoy starts with blank RAM): high score 0,
+    and nothing is written to the save RAM."""
+    game = make_game(boot=False)
+    blank = game.sram(0x2000)
+    game.boot()
     assert game.state() == cfg.STATE_TITLE
     assert game.u16("high_score") == 0
     assert game.u8("debug_invincible") == 0
-    assert bytes(game.sram(6)) == sram_block(0)
+    assert game.sram(0x2000) == blank
 
 
 def test_title_hud_shows_hi_0000_from_blank_save(game, cfg):
@@ -53,12 +57,12 @@ def test_title_press_start_sprites(game, cfg):
         [cfg.S_TEXT_BASE + ord(c) - ord("A") for c in letters]
 
 
-def test_blank_save_is_rewritten_valid(make_game):
+def test_blank_save_is_left_alone(make_game):
     g = make_game(ram=bytes(0x2000))
-    assert bytes(g.sram(6)) == sram_block(0)
+    assert g.u16("high_score") == 0
+    g.tick(60)
     g.stop(save=True)
-    data = g.ram_path.read_bytes()
-    assert data[:6] == sram_block(0)
+    assert g.ram_path.read_bytes() == bytes(0x2000)
 
 
 @pytest.mark.parametrize("button", ["start", "a"])

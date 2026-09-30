@@ -201,16 +201,30 @@ sky because the bobbing sky band reads into it.
 
 ## Save RAM
 
-At `0xA000` (enable with `ENABLE_RAM`, `SWITCH_RAM(0)`, disable after):
+At `0xA000` (enable with `ENABLE_RAM`, `SWITCH_RAM(0)`, disable after), two
+copies ("slots") of 8 bytes: slot 0 at `0xA000`, slot 1 at `0xA008`.
 
 | Offset | Value |
 |--------|-------|
 | 0–1 | Magic `'P' 'J'` |
-| 2 | Format version, 1 |
-| 3–4 | High score, little-endian `uint16_t` |
-| 5 | Checksum: `(uint8_t)~(sum of bytes 0–4)` |
+| 2 | Format version, 2 |
+| 3 | Sequence number: +1 per save, wraps 255 → 0 |
+| 4–5 | High score, little-endian `uint16_t` |
+| 6 | Checksum: `(uint8_t)~(sum of bytes 0–5)` |
+| 7 | 0 (unused) |
 
-If any check fails, the high score is 0 and the block is rewritten.
+- A slot is good when magic, version and checksum all match.
+- Loading uses the good slot with the newest sequence number: slot 1 is
+  newer when `(int8_t)(seq1 - seq0) > 0`, so 0 follows 255. If neither
+  slot is good the high score is 0 and **nothing is written**; the next
+  new best creates a good slot. Loading never writes.
+- A save (only on a new best) goes to the slot that does not hold the
+  newest good copy (slot 0 when there is none), with the next sequence
+  number. It clears byte 0 first, then writes bytes 1–7, then writes
+  byte 0 (`'P'`) last, so a power cut at any point leaves that slot bad
+  and the other slot, with the previous best, untouched.
+- Format 1 (a single 6-byte block at `0xA000`, from before the release) is
+  not read.
 
 ## Symbols the tests read
 

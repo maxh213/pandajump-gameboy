@@ -7,7 +7,7 @@ PyBoy's frame starts at line 0; the position inside it is measured in
 clock cycles (456 per line) from the start of the tick."""
 import pytest
 
-from gb import ram_image, sram_block
+from gb import save_ram, sram_slot
 
 LINE = 456
 
@@ -75,7 +75,7 @@ def session(g, cfg, step, press):
 
 
 def run_session(make_game, cfg, hooks):
-    g = make_game(ram=ram_image(sram_block(1)), boot=False)
+    g = make_game(ram=save_ram(sram_slot(1)), boot=False)
     t = Timed(g)
     for h in hooks:
         t.hook(h)

@@ -222,7 +222,7 @@ class GB:
     def io(self, reg: int) -> int:
         return self.pb.memory[reg]
 
-    def sram(self, n: int = 6, offset: int = 0) -> list[int]:
+    def sram(self, n: int = 16, offset: int = 0) -> list[int]:
         """Cartridge RAM bank 0 at 0xA000 (read directly, enabled or not)."""
         return [self.pb.memory[0, 0xA000 + offset + i] for i in range(n)]
 
@@ -426,8 +426,22 @@ def unwrap16(prev: int, new: int) -> int:
     return (new - prev) & 0xFFFF
 
 
-def sram_block(value: int, magic=b"PJ", version: int = 1) -> bytes:
-    """The 6-byte save block of docs/DESIGN.md."""
-    b = bytearray(magic) + bytes([version, value & 0xFF, (value >> 8) & 0xFF])
+SLOT_SIZE = 8              # docs/DESIGN.md "Save RAM": two slots at 0xA000 and 0xA008
+
+
+def sram_slot(value: int, seq: int = 1, magic=b"PJ", version: int = 2) -> bytes:
+    """One 8-byte save slot of docs/DESIGN.md: magic, version, sequence
+    number, score (little-endian), checksum ~(sum of bytes 0-5), 0."""
+    b = bytearray(magic) + bytes([version, seq & 0xFF, value & 0xFF, (value >> 8) & 0xFF])
     b.append((~sum(b)) & 0xFF)
+    b.append(0)
     return bytes(b)
+
+
+def save_ram(slot0: bytes | None = None, slot1: bytes | None = None, fill: int = 0xFF) -> bytes:
+    """8 KiB of cartridge RAM holding these slots (None leaves `fill`)."""
+    ram = bytearray([fill]) * 0x2000
+    for i, slot in enumerate((slot0, slot1)):
+        if slot is not None:
+            ram[i * SLOT_SIZE:i * SLOT_SIZE + len(slot)] = slot
+    return bytes(ram)
