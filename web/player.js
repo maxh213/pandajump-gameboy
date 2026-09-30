@@ -46,7 +46,10 @@
   // to 0.5% faster or slower (too little to hear) to keep the queue on target.
   const AUDIO_RATE_GAIN = 0.1; // playback rate change per second of queue error
   const AUDIO_MAX_RATE_CHANGE = 0.005;
-  const VOLUME = 0.5;
+  // Output gain. binjgb's samples only reach 240 of 255 even with all four
+  // channels at full volume, so after the DC filter below the mix stays
+  // within about +-0.94 and this full gain can't clip.
+  const VOLUME = 1;
   const DC_POLE = 0.995; // high-pass filter, like the Game Boy's output capacitor
 
   const SAVE_DELAY_MS = 250; // gather ext RAM writes that come close together
@@ -91,7 +94,9 @@
   };
 
   // Keyboard, by KeyboardEvent.code (key positions, so other layouts work).
-  // Up is also A, because in this game up means jump.
+  // Up is also A, because in this game up means jump. Shift is not Select:
+  // Shift+Tab moves focus back through the page, and on the title screen
+  // Select switches the music off.
   const KEYS = {
     KeyZ: ['a'],
     Space: ['a'],
@@ -100,8 +105,7 @@
     KeyX: ['b'],
     Enter: ['start'],
     NumpadEnter: ['start'],
-    ShiftLeft: ['select'],
-    ShiftRight: ['select'],
+    KeyC: ['select'],
     Backspace: ['select'],
     ArrowDown: ['down'],
     ArrowLeft: ['left'],
@@ -187,16 +191,17 @@
   }
 
   // Whether a focused page control needs this key itself: Space and Enter
-  // press buttons and follow links, Space and the arrows work radio buttons.
-  // Every other key, and every key while nothing on the page has focus,
-  // goes to the game.
+  // press buttons, Enter follows links (Space on a link would only scroll
+  // the page), Space and the arrows work radio buttons. Every other key, and
+  // every key while nothing on the page has focus, goes to the game.
   function keyIsForControl(event) {
     const el = event.target;
     if (!(el instanceof Element)) return false;
     if (el.closest('#console') && !el.closest('.overlay')) return false;
     if (el.isContentEditable) return true;
     const code = event.code;
-    const activates = code === 'Space' || code === 'Enter' || code === 'NumpadEnter';
+    const enter = code === 'Enter' || code === 'NumpadEnter';
+    const activates = enter || code === 'Space';
     switch (el.tagName) {
       case 'INPUT':
         if (el.type === 'radio') return code === 'Space' || code.startsWith('Arrow');
@@ -206,9 +211,10 @@
       case 'SELECT':
         return true;
       case 'BUTTON':
-      case 'A':
       case 'SUMMARY':
         return activates;
+      case 'A':
+        return enter;
       default:
         return false;
     }
@@ -298,15 +304,69 @@
 
   // ------------------------------------------------------------ screen
 
+  // Draws the Game Boy's frames on the page's canvas so that every Game Boy
+  // pixel covers exactly k x k device pixels. player.js sizes the screen to
+  // 160k x 144k device pixels, and the browser reports the device pixels the
+  // canvas really covers (ResizeObserver's device-pixel-content-box):
+  //   - exactly 160k x 144k: the canvas stays 160 x 144 and the browser's
+  //     own pixelated upscale, by exactly k, does the rest (cheapest);
+  //   - a device pixel more or less (the browser rounded the layout): the
+  //     canvas takes one pixel per device pixel, and the frame is drawn into
+  //     it k times bigger, the spare edge filled with the nearest colours;
+  //   - not reported (Safari), or not believable (Chrome's emulated pixel
+  //     ratios in DevTools report CSS pixels): 160 x 144, scaled by the
+  //     browser, which is as good as it can be there.
   class Screen {
     constructor(canvas) {
+      this.canvas = canvas;
       this.ctx = canvas.getContext('2d', { alpha: false });
-      this.image = this.ctx.createImageData(SCREEN_W, SCREEN_H);
+      // The frame at the Game Boy's own 160 x 144, copied up from here.
+      this.frame = document.createElement('canvas');
+      this.frame.width = SCREEN_W;
+      this.frame.height = SCREEN_H;
+      this.frameCtx = this.frame.getContext('2d', { alpha: false });
+      this.image = this.frameCtx.createImageData(SCREEN_W, SCREEN_H);
       this.pixels = new Uint32Array(this.image.data.buffer);
       // The last frame as shade-code low bits (3 is the lightest shade), kept
       // so a palette change can redraw it, even while paused.
       this.shades = new Uint8Array(SCREEN_W * SCREEN_H).fill(3);
       this.colors = new Uint32Array(4);
+      this.watchSize();
+    }
+
+    watchSize() {
+      if (typeof ResizeObserver !== 'function') return;
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[entries.length - 1];
+        const device = entry.devicePixelContentBoxSize && entry.devicePixelContentBoxSize[0];
+        const css = entry.contentBoxSize && entry.contentBoxSize[0];
+        const dpr = window.devicePixelRatio || 1;
+        const believable = Boolean(device && css) &&
+          Math.abs(device.inlineSize - css.inlineSize * dpr) < 2 &&
+          Math.abs(device.blockSize - css.blockSize * dpr) < 2;
+        this.fit(believable ? device.inlineSize : 0, believable ? device.blockSize : 0);
+      });
+      try {
+        observer.observe(this.canvas, { box: 'device-pixel-content-box' });
+      } catch (err) {
+        observer.observe(this.canvas); // no device pixels here
+      }
+    }
+
+    // Sizes the canvas for a box of width x height device pixels (0: unknown).
+    fit(width, height) {
+      let w = SCREEN_W;
+      let h = SCREEN_H;
+      const k = width / SCREEN_W;
+      if (width > 0 && height > 0 && !(Number.isInteger(k) && height === SCREEN_H * k)) {
+        w = width;
+        h = height;
+      }
+      const canvas = this.canvas;
+      if (canvas.width === w && canvas.height === h) return;
+      canvas.width = w;
+      canvas.height = h;
+      this.draw();
     }
 
     setPalette(colors) {
@@ -324,7 +384,24 @@
     paint() {
       const { pixels, shades, colors } = this;
       for (let i = 0; i < pixels.length; i++) pixels[i] = colors[shades[i]];
-      this.ctx.putImageData(this.image, 0, 0);
+      this.frameCtx.putImageData(this.image, 0, 0);
+      this.draw();
+    }
+
+    // Copies the frame onto the canvas at the largest whole scale that fits,
+    // centred. On a canvas a device pixel too big, the frame stretched to the
+    // whole canvas first fills the spare edge with the picture's edge colours;
+    // on one a device pixel too small, the outermost device pixel is cut.
+    draw() {
+      const { canvas, ctx, frame } = this;
+      const width = canvas.width;
+      const height = canvas.height;
+      const k = Math.max(1, Math.min(Math.floor((width + 1) / SCREEN_W), Math.floor((height + 1) / SCREEN_H)));
+      const w = SCREEN_W * k;
+      const h = SCREEN_H * k;
+      ctx.imageSmoothingEnabled = false;
+      if (w !== width || h !== height) ctx.drawImage(frame, 0, 0, width, height);
+      ctx.drawImage(frame, Math.floor((width - w) / 2), Math.floor((height - h) / 2), w, h);
     }
   }
 
@@ -714,11 +791,35 @@
       }
     }
 
-    // Another tab saved. Carrying on here could overwrite a better score
-    // with this tab's older one, so stop and offer a reload.
+    // Another tab saved. If its save differs from the cartridge RAM here,
+    // carrying on could overwrite a better score with this tab's older one,
+    // so stop and offer a reload. Two cases are no conflict:
+    //   - the same save (tabs opened together, each game writing the same
+    //     fresh save block when it boots on a blank cartridge);
+    //   - a game here that hasn't run a single tick (a tab opened or
+    //     restored in the background, or one still waiting for its first
+    //     frame): it hasn't read its RAM yet, so it simply starts from the
+    //     other tab's save. Once it has run, it may have read the RAM, and
+    //     only a reload is safe.
     onStorage(event) {
       if (event.key !== KEY_SAVE || event.newValue === null || event.newValue === this.lastSaved) return;
       if (this.state === 'loading' || this.state === 'stopped') return;
+      if (event.newValue === bytesToBase64(this.gb.readExtRam())) {
+        this.lastSaved = event.newValue;
+        return;
+      }
+      if (this.gb.ticks === 0) {
+        let bytes = null;
+        try {
+          bytes = base64ToBytes(event.newValue);
+        } catch (err) {
+          // unreadable: handled as a conflict below
+        }
+        if (bytes && this.gb.writeExtRam(bytes)) {
+          this.lastSaved = event.newValue;
+          return;
+        }
+      }
       this.saveBlocked = true;
       this.stop();
       this.showMessage(
@@ -829,7 +930,11 @@
       if (event.target.closest('.overlay button, .overlay a')) return;
       const el = event.target.closest('.dpad') || event.target.closest('[data-gb], .screen');
       if (!el) return;
-      event.preventDefault(); // keeps focus where it was, and no text selection
+      event.preventDefault(); // no text selection, and the button doesn't take focus
+      // Playing hands the keys back to the game: a page control that still
+      // has focus (reached with Tab) would otherwise keep Space and Enter.
+      const focused = document.activeElement;
+      if (focused && focused !== document.body && !this.device.contains(focused)) focused.blur();
       this.lastPointerTime = performance.now();
       if (this.resumeByInput()) return;
       if (this.state === 'stopped') return;
@@ -1079,8 +1184,10 @@
       let scale = Math.max(Math.min(byWidth, byHeight), Math.min(byWidth, Math.round(2 * dpr)));
       scale = Math.max(1, Math.min(scale, Math.floor(MAX_CSS_SCALE * dpr)));
 
-      this.device.style.setProperty('--screen-w', (SCREEN_W * scale) / dpr + 'px');
-      this.device.style.setProperty('--screen-h', (SCREEN_H * scale) / dpr + 'px');
+      // A 256th of a device pixel more, so float rounding in the layout
+      // never leaves the screen a device pixel short of 160k x 144k.
+      this.device.style.setProperty('--screen-w', (SCREEN_W * scale + 1 / 256) / dpr + 'px');
+      this.device.style.setProperty('--screen-h', (SCREEN_H * scale + 1 / 256) / dpr + 'px');
     }
   }
 
