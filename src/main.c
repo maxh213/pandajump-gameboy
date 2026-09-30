@@ -126,7 +126,7 @@ static void play_state(void) {
         return;
     }
     if (pressed & J_A) {
-        jump = player_jump();
+        jump = player_press();
         if (jump == JUMPED) {
             sfx_jump();
         } else if (jump == DOUBLE_JUMPED) {
@@ -134,7 +134,11 @@ static void play_state(void) {
             fx_start((uint8_t)(panda_y >> 8) + 12);
         }
     }
-    if (player_physics()) fx_start(GROUND_Y - 8);   /* landed */
+    jump = player_physics();
+    if (jump) {                   /* landed */
+        fx_start(GROUND_Y - 8);
+        if (jump == JUMPED) sfx_jump();   /* a kept press took off again */
+    }
     world_scroll();
     world_clouds(world_speed);
     player_run();

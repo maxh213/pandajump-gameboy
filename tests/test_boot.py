@@ -104,13 +104,16 @@ def test_logo_becomes_sky_over_4_frames(game, cfg):
 
 
 def test_world_x_advances_by_world_speed(game, cfg):
+    """world_x / world_sub advance by world_speed (8.8) every frame, the
+    fraction carried; world_scx is the low byte."""
     game.start_run(invincible=True)
     assert game.u16("world_speed") == cfg.SPEED_BASE
-    s = Scroll(0, 0, game.u16("world_speed"))
-    for _ in range(140):
+    assert game.u8("world_sub") == 0
+    s = Scroll(game.u16("world_x"), 0, game.u16("world_speed"))
+    for _ in range(120):
         game.tick()
         s.step()
-        assert game.u16("world_x") == s.x & 0xFFFF
+        assert (game.u16("world_x"), game.u8("world_sub")) == (s.x & 0xFFFF, s.sub)
         assert game.u8("world_scx") == s.x & 0xFF
         assert game.u16("world_speed") == cfg.SPEED_BASE
 

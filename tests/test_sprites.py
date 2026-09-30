@@ -34,7 +34,7 @@ def test_panda_frames_follow_the_state(make_game, cfg):
     g.start_run(invincible=True)
     seen = []
     for n in range(260):
-        if n in (20, 26, 120, 200):     # jump, double jump, jump, jump
+        if n in (20, 40, 120, 200):     # jump, double jump, jump, jump
             g.hold("a")
         else:
             g.release("a")
@@ -50,20 +50,34 @@ def test_panda_frames_follow_the_state(make_game, cfg):
 
 
 def test_run_cycle_speed(make_game, cfg):
-    """RUN_ANIM_STEP px of travel per run frame: all 6 run frames in order,
-    each held for RUN_ANIM_STEP / world_speed frames."""
+    """RUN_ANIM_STEP (8.8 px) of travel per run frame: all 6 run frames in
+    order, the next one exactly when the travel added up at world_speed per
+    frame passes another RUN_ANIM_STEP (from whatever remainder the title
+    left)."""
     frames = metasprites("panda")
     g = make_game()
     g.start_run(invincible=True)
+    speed = g.u16("world_speed")
     shown = []
     for _ in range(80):
         g.tick()
         shown.append(panda_frame(g, cfg, frames))
-    per = cfg.RUN_ANIM_STEP // g.u16("world_speed")
+    assert g.u16("world_speed") == speed
     changes = [i for i in range(1, len(shown)) if shown[i] != shown[i - 1]]
-    assert all(b - a == per for a, b in zip(changes, changes[1:])), f"run frames change at {changes}"
     for i in changes:
         assert shown[i] == (shown[i - 1] + 1) % 6
+
+    def predicted(acc):
+        out = []
+        for i in range(1, len(shown)):
+            acc += speed
+            if acc >= cfg.RUN_ANIM_STEP:
+                acc -= cfg.RUN_ANIM_STEP
+                out.append(i)
+        return out
+
+    assert any(predicted(a) == changes for a in range(cfg.RUN_ANIM_STEP)), f"run frames change at {changes}"
+    assert len(changes) >= len(shown) * speed // cfg.RUN_ANIM_STEP - 1
 
 
 def test_dead_pose_then_behind_ground(make_game, cfg):
@@ -159,7 +173,7 @@ def test_sprite_tiles_and_limits(make_game, cfg):
     g.start_run(invincible=True)
     check(20, False)
     g.tap("a")
-    check(10, False)
+    check(20, False)
     g.tap("a")                        # double jump: dust puff
     check(80, False)                  # landing: dust puff
     g.write8("debug_invincible", 0)

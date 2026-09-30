@@ -21,8 +21,7 @@ uint8_t world_scx;
 uint8_t col_height[32];
 uint16_t world_speed;
 uint8_t world_step;
-
-static uint8_t world_sub;         /* fraction of a pixel, 1/256ths */
+uint8_t world_sub;
 
 /* ---- Raster split ------------------------------------------------------
    The main loop writes the "next" scroll values (world_scx, sky_scx,
@@ -133,15 +132,22 @@ void world_vram(void) {
 /* ---- Obstacle generator ---------------------------------------------------
    Each new column is either empty, or one half of a 16 px wide box. An
    obstacle is 1 box column (2 tiles) or, once score > DOUBLE_SCORE, 1 time
-   in 3 a double (2 box columns side by side, 4 tiles), 1 or 2 boxes high.
-   After an obstacle come SPACING - 2 + random(0..3) empty columns; see
-   config.h for why that spacing is always clearable. */
+   in 3 a double (2 box columns side by side, 4 tiles), 1 or 2 boxes high
+   (the run's first obstacle is always 1 box). After an obstacle come
+   SPACING - 2 + random(0..3) empty columns; see config.h for why that
+   spacing is always clearable. The late ramp raises the double and 2-box
+   chances and narrows the random extra. */
 static uint16_t gen_tile;         /* world_x >> 3 for the last column made */
 static uint8_t gen_on;            /* 0 on the title: no boxes */
+static uint8_t gen_first;         /* 1 until the run's first obstacle is made */
 static uint8_t gen_gap;           /* empty columns before the next obstacle */
 static uint8_t gen_cols;          /* columns left in the current obstacle */
 static uint8_t gen_height;        /* its height in pixels, 16 or 32 */
 static uint8_t spacing;           /* current start-to-start spacing, tiles */
+static uint8_t spacing_rand;      /* bit mask of the random extra spacing */
+static uint8_t double_chance;     /* P(double column) * 256 once score > DOUBLE_SCORE */
+static uint8_t tall_chance;       /* P(2 boxes high) * 256 */
+static uint8_t late_count;        /* ramp steps since the last late step */
 
 /* Right edges (world x) of obstacles the panda hasn't passed yet. */
 #define OBS_MAX 8                 /* power of 2; 3 at most are ever queued */
@@ -158,10 +164,15 @@ static void gen_column(void) {
         if (gen_gap) {
             gen_gap--;
         } else {
-            gen_height = (rand() & 1) ? 32 : 16;
+            if (gen_first) {
+                gen_first = 0;
+                gen_height = 16;      /* an easy first jump */
+            } else {
+                gen_height = (rand() < tall_chance) ? 32 : 16;
+            }
             gen_cols = 2;
-            if (score > DOUBLE_SCORE && rand() < DOUBLE_CHANCE) gen_cols = 4;
-            gen_gap = spacing - 2 + (rand() & SPACING_RAND);
+            if (score > DOUBLE_SCORE && rand() < double_chance) gen_cols = 4;
+            gen_gap = spacing - 2 + (rand() & spacing_rand);
         }
     }
 
@@ -233,10 +244,21 @@ uint8_t world_cleared(void) {
     return 0;
 }
 
+/* Every RAMP_EVERY points: faster (and closer, if SPACING_BASE is above
+   SPACING_MIN) up to SPEED_MAX; after that, every LATE_EVERY points, more
+   double and 2-box obstacles and less random room between them. */
 void world_ramp(void) {
-    if (world_speed < SPEED_MAX) world_speed += SPEED_STEP;
-    if (world_speed > SPEED_MAX) world_speed = SPEED_MAX;
     if (spacing > SPACING_MIN) spacing--;
+    if (world_speed < SPEED_MAX) {
+        world_speed += SPEED_STEP;
+        if (world_speed > SPEED_MAX) world_speed = SPEED_MAX;
+        return;
+    }
+    if (++late_count < LATE_EVERY / RAMP_EVERY) return;
+    late_count = 0;
+    double_chance = (double_chance < DOUBLE_MAX - DOUBLE_STEP) ? double_chance + DOUBLE_STEP : DOUBLE_MAX;
+    tall_chance = (tall_chance < TALL_MAX - TALL_STEP) ? tall_chance + TALL_STEP : TALL_MAX;
+    if (score >= LATE_RAND_SCORE) spacing_rand = LATE_RAND;
 }
 
 /* ---- Sky band: clouds ----------------------------------------------------
@@ -365,8 +387,13 @@ void world_start_run(uint8_t from_title) {
     world_step = 0;
     world_speed = SPEED_BASE;
     spacing = SPACING_BASE;
+    spacing_rand = SPACING_RAND;
+    double_chance = DOUBLE_CHANCE;
+    tall_chance = TALL_CHANCE;
+    late_count = 0;
     gen_tile = 0;
     gen_on = 1;
+    gen_first = 1;
     gen_gap = FIRST_GAP;
     gen_cols = 0;
     obs_head = 0;

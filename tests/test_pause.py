@@ -4,7 +4,7 @@ left off."""
 import numpy as np
 
 from gb import dark_text, find_text
-from model import Physics
+from model import Physics, Scroll
 
 
 def snapshot(g):
@@ -75,7 +75,7 @@ def test_start_resumes_where_it_left_off(make_game, cfg):
     g.hold("start")
     g.tick()                             # a normal frame; Start is read at its end
     ys.append((g.s16("panda_y"), g.s16("panda_vy")))
-    wx = g.u16("world_x")
+    scroll = g.scroll()
     before = snapshot(g)
     g.release("start")
     g.tick()                             # the pause frame changes nothing but the state
@@ -95,7 +95,9 @@ def test_start_resumes_where_it_left_off(make_game, cfg):
     assert ys == want
     g.tick(1)
     assert g.bg_row(8) == [cfg.T_SKY] * 32, "PAUSED not cleared"
-    assert g.u16("world_x") == wx + 61
+    for _ in range(61):                  # the frames played since `before`
+        scroll.step()
+    assert (g.u16("world_x"), g.u8("world_sub")) == (scroll.x & 0xFFFF, scroll.sub)
 
 
 def test_pause_holds_the_music_and_resume_continues_it(make_game, cfg):

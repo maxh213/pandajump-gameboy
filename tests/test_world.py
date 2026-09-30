@@ -23,7 +23,7 @@ def test_map_mirrors_col_height(make_game, cfg):
     g = make_game()
     g.start_run(invincible=True)
     wmap = WorldMap()
-    raw, x = 0, 0
+    raw = x = g.u16("world_x")
     ground = [[cfg.T_GRASS_0, cfg.T_GRASS_1], [cfg.T_GROUND_A0, cfg.T_GROUND_A1],
               [cfg.T_GROUND_B0, cfg.T_GROUND_B1], [cfg.T_GROUND_B0, cfg.T_GROUND_B1]]
     checked = 0

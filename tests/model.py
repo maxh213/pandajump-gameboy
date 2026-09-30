@@ -3,8 +3,11 @@ the integer constants from src/config.h, plus the world tracker and the
 autoplayer built on it.
 
 Order of one frame of play (docs/DESIGN.md / the state machine):
-  1. a press of A jumps (on the ground) or double jumps (once, in the air)
-  2. gravity; landing on GROUND_Y; the top of the screen clamps
+  1. a press of A jumps (on the ground), or double jumps (once, in the air,
+     when -DJUMP_VEL is faster upwards than vy and the panda is at least
+     BUFFER_HEIGHT px up), or else is kept for JUMP_BUFFER frames
+  2. gravity; landing on GROUND_Y (a kept press jumps again at once); the
+     kept press counts down; the top of the screen clamps
   3. the world scrolls by world_speed (8.8, with a carried fraction)
   4. the hitbox is checked against the columns under its left/right edges
   5. an obstacle whose right edge the hitbox's left edge has reached scores
@@ -22,9 +25,13 @@ class Panda:
     vy: int = 0            # 8.8, + is down
     on_ground: bool = True
     jumps: int = 0
+    buffer: int = 0        # frames a kept press has left (jump_buffer)
 
     def copy(self) -> "Panda":
-        return Panda(self.y, self.vy, self.on_ground, self.jumps)
+        return Panda(self.y, self.vy, self.on_ground, self.jumps, self.buffer)
+
+
+JUMPED, LANDED = 1, 3      # Physics.step() results (src/player.h)
 
 
 class Physics:
@@ -34,29 +41,35 @@ class Physics:
         self.djump = cfg["DJUMP_VEL"]
         self.max_fall = cfg["MAX_FALL"]
         self.floor = (cfg["GROUND_Y"] - 16) << 8
+        self.buffer = cfg["JUMP_BUFFER"]
+        self.low = self.floor - (cfg["BUFFER_HEIGHT"] << 8)   # double jump only at y <= low
 
     def standing(self) -> Panda:
         return Panda(self.floor)
 
     def press(self, p: Panda) -> int:
-        """A pressed: 1 jumped, 2 double jumped, 0 nothing."""
+        """A pressed: 1 jumped, 2 double jumped, 0 kept for later."""
         if p.on_ground:
             p.vy = -self.jump
             p.on_ground = False
             p.jumps = 1
+            p.buffer = 0
             return 1
-        if p.jumps == 1:
+        if p.jumps == 1 and p.vy > -self.djump and p.y <= self.low:
             p.vy = -self.djump
             p.jumps = 2
+            p.buffer = 0
             return 2
+        p.buffer = self.buffer
         return 0
 
-    def step(self, p: Panda, press: bool = False) -> bool:
-        """One frame. Returns True on landing."""
+    def step(self, p: Panda, press: bool = False) -> int:
+        """One frame. Returns 0, LANDED, or JUMPED when it lands and a
+        kept press takes off again in the same frame."""
         if press:
             self.press(p)
         if p.on_ground:
-            return False
+            return 0
         p.vy = min(p.vy + self.g, self.max_fall)
         p.y += p.vy
         if p.y >= self.floor:
@@ -64,12 +77,17 @@ class Physics:
             p.vy = 0
             p.on_ground = True
             p.jumps = 0
-            return True
+            if p.buffer:
+                self.press(p)
+                return JUMPED
+            return LANDED
+        if p.buffer:
+            p.buffer -= 1
         if p.y < 0:
             p.y = 0
             if p.vy < 0:
                 p.vy = 0
-        return False
+        return 0
 
     def trajectory(self, presses: set[int], frames: int, start: Panda | None = None):
         """panda states after each of `frames` frames; presses are frame
@@ -90,6 +108,35 @@ def speed_for_score(cfg, score: int) -> int:
 def spacing_for_score(cfg, score: int) -> int:
     steps = score // cfg["RAMP_EVERY"]
     return max(cfg["SPACING_MIN"], cfg["SPACING_BASE"] - steps)
+
+
+def late_steps(cfg, score: int) -> int:
+    """Late ramp steps so far: one every LATE_EVERY points after the ramp
+    step that reached SPEED_MAX."""
+    top = -(-(cfg["SPEED_MAX"] - cfg["SPEED_BASE"]) // cfg["SPEED_STEP"])
+    extra = score // cfg["RAMP_EVERY"] - top
+    return max(0, extra) // (cfg["LATE_EVERY"] // cfg["RAMP_EVERY"])
+
+
+def double_chance_for_score(cfg, score: int) -> int:
+    """P(double column) * 256 for an obstacle made at this score."""
+    if score <= cfg["DOUBLE_SCORE"]:
+        return 0
+    return min(cfg["DOUBLE_MAX"], cfg["DOUBLE_CHANCE"] + cfg["DOUBLE_STEP"] * late_steps(cfg, score))
+
+
+def tall_chance_for_score(cfg, score: int) -> int:
+    """P(2 boxes high) * 256 for an obstacle made at this score (not the
+    run's first obstacle, which is always 1 box)."""
+    return min(cfg["TALL_MAX"], cfg["TALL_CHANCE"] + cfg["TALL_STEP"] * late_steps(cfg, score))
+
+
+def spacing_rand_for_score(cfg, score: int) -> int:
+    """The bit mask of the random extra spacing after an obstacle made at
+    this score."""
+    if late_steps(cfg, score) and score >= cfg["LATE_RAND_SCORE"]:
+        return cfg["LATE_RAND"]
+    return cfg["SPACING_RAND"]
 
 
 def documented_min_spacing(speed: int) -> int:
@@ -207,21 +254,27 @@ class AutoPlayer:
         self.hy1 = cfg["HIT_Y1"]
         self.ground_y = cfg["GROUND_Y"]
         # Trajectories from the ground, frame 0 = the take-off frame, to the
-        # landing frame inclusive: single jump (key None) and with a double
-        # jump k frames after take-off. Sprite-top pixel rows.
+        # landing frame inclusive: single jump (key None) and with a second
+        # press k frames after take-off, as long as that press comes before
+        # the landing (it may double jump, do nothing, or be kept and jump
+        # again on landing). Sprite-top pixel rows.
         self.np = np
         self.traj = {}
         for k in [None] + list(range(2, 70)):
             presses = {1} if k is None else {1, 1 + k}
             ys = []
             p = self.phys.standing()
+            landed = False
             for n in range(1, 400):
+                if n == max(presses) and n > 1 and p.on_ground:
+                    break                   # landed before the second press
                 self.phys.step(p, n in presses)
                 ys.append(p.y)
-                if p.on_ground:
+                if p.on_ground and n >= max(presses):
+                    landed = True
                     break
-            if k is not None and k >= len(ys):
-                break                       # landed before the double jump
+            if not landed:
+                break
             self.traj[k] = np.array(ys, dtype=np.int64) >> 8
 
     def plan_ground(self, first: int, xs, hs, target: int):
@@ -346,8 +399,8 @@ class AutoPlayer:
             _, f, k = r
             return (f,) if k is None else (f, f + k)
         options = [()]
-        if after1.jumps == 1:
-            options += [(g,) for g in range(first, 120)]
+        # one more press: a double jump, or kept for a jump on landing
+        options += [(g,) for g in range(first, 120)]
         best = None
         for opt in options:
             li = self.evaluate(panda, base + opt, xs, hs, target)

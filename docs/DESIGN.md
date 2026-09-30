@@ -151,22 +151,49 @@ lines; the tests parse them.
 
 - Panda: fixed screen X (`PANDA_X`), 16×16 sprite, smaller hitbox
   (`HIT_X0..HIT_X1`, `HIT_Y0..HIT_Y1`, offsets inside the sprite).
-- Jump: pressing A on the ground sets `vy = -JUMP_VEL`. One more press in
-  the air sets `vy = -DJUMP_VEL` (the double jump, like the original: it
-  *sets* the velocity). Gravity `GRAVITY` per frame, capped at
-  `MAX_FALL`. The panda is on the ground when its feet reach `GROUND_Y`;
-  that resets the double jump. It can't go above the top of the screen.
+- Jump: pressing A on the ground sets `vy = -JUMP_VEL`. Gravity `GRAVITY`
+  per frame, capped at `MAX_FALL`. The panda is on the ground when its
+  feet reach `GROUND_Y`; that resets the double jump. It can't go above
+  the top of the screen.
+- Double jump: one more press in the air sets `vy = -DJUMP_VEL`, but only
+  when that helps. Unlike the original (which always *sets* the velocity,
+  so an early second press made the jump lower), a press while the panda
+  still rises at least that fast (`vy <= -DJUMP_VEL`: the first 14 frames
+  of a jump) is not the double jump, and neither is a press less than
+  `BUFFER_HEIGHT` px above the ground (the last 4 frames of a jump's
+  fall), where a full jump on landing is worth more than a short hop. No
+  sound, no dust puff, and the double jump stays available.
+- Jump buffer: any press in the air that doesn't double jump (including
+  every press after the double jump) is kept for `JUMP_BUFFER` frames,
+  its own frame included (`jump_buffer` counts down). If the panda lands
+  in that time it jumps again in the landing frame (`vy = -JUMP_VEL`, still
+  at the floor that frame, with the jump sound), which from then on is
+  exactly a jump pressed on its first frame on the ground. Otherwise the
+  press is dropped.
 - Scroll: `world_x` advances by the current speed (starts at `SPEED_BASE`
   px/frame) each frame; `world_scx` is its low byte. When `world_x >> 3`
   changes, the column `(world_x >> 3) + 21` (mod 32), which is off-screen
   to the right, is generated and written to the map (rows 10–13 only).
-- Obstacles: a column is 2 tiles wide with 1 or 2 boxes (50/50). Once the
-  score is above 10, one in three obstacles is a double column (two
-  columns side by side, same height). After each obstacle the generator
-  leaves `SPACING - 2` empty tiles (plus a random 0–3), so single columns
-  start `SPACING` tiles apart and a double column is followed by
-  `SPACING + 2`; `src/config.h` derives the safe minimum from the physics; the difficulty ramp raises the speed and shortens the spacing as
-  the score grows, down to limits that the physics can still clear.
+- Obstacles: a column is 2 tiles wide with 1 or 2 boxes (2 boxes with
+  probability `TALL_CHANCE`/256, one half; a run's first obstacle is
+  always 1 box). Once the score is above `DOUBLE_SCORE` (10), `DOUBLE_CHANCE`
+  /256 (one in three) of obstacles are double columns (two columns side by
+  side, same height). After each obstacle the generator leaves
+  `SPACING - 2` empty tiles plus a random extra (`rand() & SPACING_RAND`,
+  0–3), so single columns start `SPACING` tiles apart and a double column
+  is followed by `SPACING + 2`. `src/config.h` derives the smallest safe
+  spacing from the physics and the input rules.
+- Difficulty ramp: every `RAMP_EVERY` (5) points the speed goes up by
+  `SPEED_STEP`, from `SPEED_BASE` (1.125 px/frame) to `SPEED_MAX` (1.5,
+  score 40); the spacing stays at `SPACING_MIN` (14 tiles), which is safe at
+  every speed up to the top (`SPACING_BASE` = `SPACING_MIN`: no spacing
+  ramp). After that, every `LATE_EVERY` (10) points the double chance goes
+  up by `DOUBLE_STEP` (to `DOUBLE_MAX`, one half) and the 2-box chance by
+  `TALL_STEP` (to `TALL_MAX`, five eighths), both reached at score 80, and
+  from `LATE_RAND_SCORE` (60) the random extra is `rand() & LATE_RAND`
+  (0–1). None of this can make a sequence unclearable: the safety check
+  covers every mix of obstacle types, and the spacing never goes below
+  `SPACING_MIN` nor the speed above `SPEED_MAX`.
 - `col_height[32]` mirrors the box height in pixels (0, 16 or 32) of each
   map column, so collision never reads VRAM: the hitbox is checked against
   the columns under its left and right edges.
@@ -233,16 +260,19 @@ Plain (non-`static`) globals, found through `build/pandajump.sym`
 
 `game_state`, `score`, `high_score`, `panda_y` (8.8, top of the sprite in
 screen pixels), `panda_vy` (8.8, positive is down), `panda_on_ground`,
-`jumps_used`, `world_x` (`uint16_t`, whole pixels scrolled this run),
-`world_scx`, `col_height[32]`, `frame_count` (`uint8_t`, +1 per frame),
+`jumps_used`, `jump_buffer` (frames a kept press has left, 0 if none),
+`world_x` (`uint16_t`, whole pixels scrolled this run), `world_sub`
+(`uint8_t`, the fraction of a pixel in 1/256ths), `world_scx`,
+`col_height[32]`, `frame_count` (`uint8_t`, +1 per frame),
 `debug_invincible` (`uint8_t`, 0 in normal play; when a test sets it,
 collisions are ignored), `world_speed` (8.8 px/frame, shows the ramp).
 
 Timing that tests can rely on: a button press shows in RAM 2 frames after
 it starts (the game reads the joypad right after VBlank and runs its logic
-from line 1); each state change sets `game_state` last; BG text appears
-one frame after a state change; the title logo turns into sky over 4
-frames when a run starts.
+from line 1), except that a kept press acts on the landing frame; each
+state change sets `game_state` last; BG text appears one frame after a
+state change; the title logo turns into sky over 4 frames when a run
+starts.
 
 ## Web player
 

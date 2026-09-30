@@ -279,7 +279,12 @@ class GB:
     def panda(self):
         from model import Panda
         return Panda(self.s16("panda_y"), self.s16("panda_vy"),
-                     bool(self.u8("panda_on_ground")), self.u8("jumps_used"))
+                     bool(self.u8("panda_on_ground")), self.u8("jumps_used"), self.u8("jump_buffer"))
+
+    def scroll(self):
+        """The world's scroll as a model.Scroll (world_x, world_sub, speed)."""
+        from model import Scroll
+        return Scroll(self.u16("world_x"), self.u8("world_sub"), self.u16("world_speed"))
 
 
 def record_world(g: GB, frames: int, wmap=None, chunk: int = 16, on_sample=None):

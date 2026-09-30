@@ -16,7 +16,7 @@ def test_score_once_per_obstacle(make_game, cfg):
     g.start_run(invincible=True)
     hx0 = cfg.PANDA_X + cfg.HIT_X0
     wmap = WorldMap()
-    raw, x = 0, 0
+    raw = x = g.u16("world_x")
     samples = []           # (world_x, score, score row tiles) after each frame
     target = 45            # past DOUBLE_SCORE, so double columns are in
     while not samples or samples[-1][1] < target:

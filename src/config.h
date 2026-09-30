@@ -20,9 +20,16 @@
 /* ---- Panda physics: 8.8 fixed point, 256 = 1 px (per frame, per frame^2) */
 #define GRAVITY       25    /* added to vy every frame in the air */
 #define JUMP_VEL      750   /* jump from the ground: vy = -JUMP_VEL */
-#define DJUMP_VEL     400   /* second press in the air: vy = -DJUMP_VEL */
+#define DJUMP_VEL     400   /* double jump: vy = -DJUMP_VEL, only if that is a boost */
 #define MAX_FALL      768   /* vy is capped here (3 px/frame) */
 #define DEAD_HOP_VEL  448   /* the little hop when the panda dies */
+
+/* Input: a press in the air that can't double jump (the double jump is
+   used up, it would not speed the panda up, or the panda is less than
+   BUFFER_HEIGHT px above the ground) is kept for JUMP_BUFFER frames and
+   jumps the moment the panda lands. See "The jump buffer" below. */
+#define JUMP_BUFFER   6     /* frames a press is kept, its own included */
+#define BUFFER_HEIGHT 12    /* px above the ground: below it a press waits for the ground */
 
 /* Measured in the ROM (PyBoy) with these values: a jump rises for 30
    frames to a 42.5 px apex and is in the air for 59 frames. A double jump
@@ -38,24 +45,71 @@
 #define HIT_Y1        14
 
 /* ---- Scrolling and the difficulty ramp --------------------------------- */
-#define SPEED_BASE    256   /* world speed at the start of a run (1 px/frame) */
-#define SPEED_STEP    16    /* added every RAMP_EVERY points ... */
+#define SPEED_BASE    288   /* world speed at the start of a run (1.125 px/frame) */
+#define SPEED_STEP    12    /* added every RAMP_EVERY points ... */
 #define SPEED_MAX     384   /* ... up to 1.5 px/frame (reached at score 40) */
 #define RAMP_EVERY    5     /* points per difficulty step */
-#define SPACING_BASE  16    /* obstacle start-to-start distance in tiles ... */
-#define SPACING_MIN   14    /* ... minus 1 per step, down to this (score 10) */
+#define SPACING_BASE  14    /* obstacle start-to-start distance in tiles ... */
+#define SPACING_MIN   14    /* ... minus 1 per step down to this (equal: no spacing ramp) */
 #define SPACING_RAND  3     /* plus a random 0..3 extra tiles (bit mask) */
 #define DOUBLE_SCORE  10    /* double columns only once score > this ... */
 #define DOUBLE_CHANCE 85    /* ... with probability 85/256 (1 in 3) */
-#define FIRST_GAP     2     /* empty tiles before a run's first obstacle */
+#define TALL_CHANCE   128   /* a column is 2 boxes high with probability 128/256 */
+#define FIRST_GAP     2     /* empty tiles before a run's first obstacle (always 1 box) */
 
-/* The ramp, per step (every 5 points): speed / spacing / frames between
-   obstacle starts (before the random extra)
-       score  0: 1.0   px/frame, 16 tiles, 128 frames
-       score  5: 1.06  px/frame, 15 tiles, 112 frames
-       score 10: 1.125 px/frame, 14 tiles,  99 frames (double columns begin)
-       score 20: 1.25  px/frame, 14 tiles,  89 frames
-       score 40: 1.5   px/frame, 14 tiles,  74 frames (from here on)
+/* Past the top speed, every LATE_EVERY points (score 50, 60, 70, 80) more
+   of the obstacles are doubles and 2 boxes high, and from LATE_RAND_SCORE
+   the random extra spacing shrinks. None of these can make a sequence
+   unclearable: every mix of obstacle types is covered below, and the
+   spacing never drops under SPACING_MIN. */
+#define LATE_EVERY    10
+#define DOUBLE_STEP   11    /* double chance +11/256 per late step ... */
+#define DOUBLE_MAX    128   /* ... up to 1 in 2 (score 80) */
+#define TALL_STEP     8     /* 2-box chance +8/256 per late step ... */
+#define TALL_MAX      160   /* ... up to 5 in 8 (score 80) */
+#define LATE_RAND_SCORE 60  /* from this late step on ... */
+#define LATE_RAND     1     /* ... the random extra is 0..1 tiles (bit mask) */
+
+/* The ramp: speed and frames between obstacle starts (single columns,
+   14 tiles apart, before the random extra of 0-3 tiles, 1.5 on average)
+       score  0: 1.125 px/frame, 100 frames (1.8 s with the extra)
+       score 10: 1.22  px/frame,  92 frames (double columns begin)
+       score 20: 1.31  px/frame,  85 frames
+       score 30: 1.41  px/frame,  80 frames (1.5 s with the extra)
+       score 40: 1.5   px/frame,  75 frames (the top speed)
+       score 50-80: doubles 1 in 3 -> 1 in 2, 2-box columns 1/2 -> 5/8;
+                    from 60 the random extra is 0-1 tiles
+   The original sent a column every 1.5 s at 200 px/s (1.11 px/frame at a
+   third of the size). This starts at that speed with obstacles a little
+   further apart, and is at the original's rate from about score 30.
+
+   The input rules (player_press in player.c)
+   ------------------------------------------
+   - A second press while the panda still rises at least as fast as
+     DJUMP_VEL (the first 14 frames of a jump) is not the double jump. The
+     original sets vy = -DJUMP_VEL there too, which slows the panda down: a
+     nervous double tap 2-8 frames apart peaked at 17-32 px, too low for a
+     2-box column (31 px). Now it does nothing, and the double jump is
+     still there for later.
+   - Below BUFFER_HEIGHT (12 px) a press isn't the double jump either. After
+     a jump that is the last 4 frames of the fall (2.8 px/frame): a double
+     jump there peaks at only 15-23 px and keeps the panda in the air 33
+     frames longer, so a slightly early press for the next jump used to
+     turn into a weak hop that killed the full jump. Such a hop can still
+     clear a 1-box column that is just arriving, so something is given up,
+     but a full jump on landing is what a press this close to the ground is
+     almost always meant as. From 12 px up (5 frames early and more) the
+     double jump peaks at 25 px or more and clears a 1-box column.
+   - Every other press in the air (these two, and any press after the
+     double jump) is kept for JUMP_BUFFER (6) frames, its own included, and
+     if the panda lands in that time it jumps on the landing frame, which is
+     exactly a jump pressed on the first frame on the ground. A press up to
+     5 frames early after a double jump, or up to 3 after a single jump, is
+     no longer lost. The buffer is short on purpose: at the top speed a jump
+     fired on landing can come too early for the next obstacle, and a longer
+     buffer would turn more stray presses into such jumps.
+   A player who presses on the ground loses nothing to these rules, and the
+   check below simulates them for every mistimed press.
 
    Why the generator can never build an unclearable sequence
    ---------------------------------------------------------
@@ -63,11 +117,12 @@
    single column for 16 + 8 = 24 px of travel and a double column for 40 px.
    A jump keeps the hitbox above a 16 px column for 48 frames and above a
    32 px column for 32 frames:
-   - single columns: 24 px at >= 1 px/frame takes <= 24 frames, so one jump
-     clears a 1-box column with 24 frames to spare and a 2-box column with 8
-     (the window grows with speed, because the column goes by faster);
-   - a double 2-box column needs 40 frames above 32 px at 1 px/frame, more
-     than a jump gives, so it takes the double jump (+12 px, +18 frames).
+   - single columns: 24 px at >= 1.125 px/frame takes <= 22 frames, so one
+     jump clears a 1-box column with 26 frames to spare and a 2-box column
+     with 10 (the window grows with speed: the column goes by faster);
+   - a double 2-box column needs 36 frames above 32 px at 1.125 px/frame,
+     more than a jump gives, so early on it takes the double jump (+12 px,
+     +18 frames); from about 1.3 px/frame one well-timed jump will do.
    Landing and jumping again: the panda lands 27-60 px past the left edge of
    what it cleared (further after a double jump or at higher speed) and must
    take off 18-36 px before the next obstacle (earlier for a 2-box column).
@@ -77,27 +132,29 @@
    To leave room for a human, the rule is: every jump must still clear if
    either press (take-off and double jump) is up to 3 frames early or late,
    and the panda gets at least 10 frames on the ground between landing and
-   the earliest of those take-offs. A tight gap can force a later-landing
-   jump, which squeezes the gap after it, so the check follows endless
-   chains of worst-case obstacles (1 or 2 boxes high, single or double),
-   trying every take-off and double-jump frame with the integer physics,
-   until the latest possible landing stops growing. With the gap after an
-   obstacle's end fixed at SPACING - 2 empty tiles (a double column is 2
-   tiles wider, so it is followed by SPACING + 2 start-to-start), the
-   smallest SPACING that keeps every chain clearable is:
+   the earliest of those take-offs. A mistimed double jump press can fall
+   in the first 14 frames or under BUFFER_HEIGHT; it then does what the
+   rules above say (nothing, or a jump on landing), and the plan has to
+   survive that too. A tight gap can force a later-landing jump, which
+   squeezes the gap after it, so the check (worst_case_chains in
+   tests/model.py) follows endless chains of worst-case obstacles (1 or 2
+   boxes high, single or double, in every order), trying every take-off and
+   double-jump frame with the integer physics, until the latest possible
+   landing stops growing. With the gap after an obstacle's end fixed at
+   SPACING - 2 empty tiles (a double column is 2 tiles wider, so it is
+   followed by SPACING + 2 start-to-start), the smallest SPACING that keeps
+   every chain clearable is:
 
        speed (px/frame)   1.0   1.125  1.25  1.375  1.5
        minimum SPACING    10    11     12    13     14   tiles
 
-   The need only grows with speed, so it is enough that the tightest spacing
-   covers the fastest speed: SPACING_MIN = 14 at SPEED_MAX = 1.5 px/frame
-   (13 would fail from 1.44 px/frame). Spacing never drops below
-   SPACING_MIN, speed never exceeds SPEED_MAX, and the random extra only
-   adds room, so every sequence is clearable at every point of the ramp,
-   including obstacles generated just before a speed step. At the limit the
-   obstacle rate is set by the jump itself (about 60 frames in the air), so
-   the ramp gets harder mostly through speed: less time to react, and
-   obstacles every 74 instead of 128 frames. */
+   SPACING_MIN = 14 is checked at every speed of the ramp (1.125 to 1.5 in
+   steps of 12/256) and at 1.5 px/frame 13 fails, so it is the tightest
+   spacing the top speed allows. The spacing is 14 all the way, the speed
+   never exceeds SPEED_MAX, and the random extra only adds room, so every
+   sequence is clearable at every point of the ramp, including obstacles
+   generated just before a speed step. The late ramp only changes how often
+   each obstacle type comes, and every mix of types is in the check. */
 
 /* ---- Clouds in the sky band -------------------------------------------- */
 #define CLOUD_SHIFT     2   /* sky scrolls at world speed >> 2 (1/4) */
@@ -106,7 +163,7 @@
 #define CLOUD_BOB_FRAMES 12 /* frames per step of the bob cycle (16 steps) */
 
 /* ---- Animation and timing ---------------------------------------------- */
-#define RUN_ANIM_STEP   1536 /* 8.8 px of travel per run frame: 10 fps at 1 px/frame */
+#define RUN_ANIM_STEP   1536 /* 8.8 px of travel per run frame: 11 fps at 1.125 px/frame */
 #define FX_FRAME_TIME   4    /* frames per dust puff frame */
 #define DEAD_DELAY      60   /* frames of ignored input after dying */
 #define BLINK_FRAMES    32   /* PRESS START is on/off for this many frames */

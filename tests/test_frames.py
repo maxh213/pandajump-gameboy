@@ -46,7 +46,7 @@ def session(g, cfg, step, press):
     assert g.state() == cfg.STATE_PLAY
     step(10)
     press("a")
-    step(10)
+    step(20)
     press("a")
     step(40)
     press("start")
