@@ -91,7 +91,9 @@
   };
 
   // Keyboard, by KeyboardEvent.code (key positions, so other layouts work).
-  // Up is also A, because in this game up means jump.
+  // Up is also A, because in this game up means jump. Shift is not Select:
+  // Shift+Tab moves focus back through the page, and on the title screen
+  // Select switches the music off.
   const KEYS = {
     KeyZ: ['a'],
     Space: ['a'],
@@ -100,8 +102,7 @@
     KeyX: ['b'],
     Enter: ['start'],
     NumpadEnter: ['start'],
-    ShiftLeft: ['select'],
-    ShiftRight: ['select'],
+    KeyC: ['select'],
     Backspace: ['select'],
     ArrowDown: ['down'],
     ArrowLeft: ['left'],
