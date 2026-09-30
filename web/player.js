@@ -46,7 +46,10 @@
   // to 0.5% faster or slower (too little to hear) to keep the queue on target.
   const AUDIO_RATE_GAIN = 0.1; // playback rate change per second of queue error
   const AUDIO_MAX_RATE_CHANGE = 0.005;
-  const VOLUME = 0.5;
+  // Output gain. binjgb's samples only reach 240 of 255 even with all four
+  // channels at full volume, so after the DC filter below the mix stays
+  // within about +-0.94 and this full gain can't clip.
+  const VOLUME = 1;
   const DC_POLE = 0.995; // high-pass filter, like the Game Boy's output capacitor
 
   const SAVE_DELAY_MS = 250; // gather ext RAM writes that come close together
