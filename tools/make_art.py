@@ -330,15 +330,16 @@ FX = [
     +oooooo+
     .++++++.
     """,
-    # 2: biggest, rising
+    # 2: biggest, rising. Three uneven bumps (the tallest left of centre) on
+    # a wide flat base, so it reads as a cloud of dust, not a heart.
     """
     ........
-    .++..++.
-    +oo++oo+
+    ..+++...
+    .+ooo++.
+    ++oo+oo+
     +oooooo+
     +oooooo+
-    .+oooo+.
-    ..++++..
+    .++++++.
     ........
     """,
     # 3: fading into wisps
