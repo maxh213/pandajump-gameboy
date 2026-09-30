@@ -267,7 +267,8 @@ class GB:
 
     def start_run(self, button: str = "start", invincible: bool = False) -> None:
         """From the title (or a finished run): press, and return on the first
-        frame of the run (world_x is 0, nothing has scrolled yet)."""
+        frame of the run (nothing has scrolled yet: world_x is the title's or
+        the last run's world_x & 15, world_sub 0)."""
         self.tap(button)
         assert self.state() == 1, f"{button} did not start a run (state {self.state()})"
         if invincible:
@@ -314,11 +315,6 @@ def record_world(g: GB, frames: int, wmap=None, chunk: int = 16, on_sample=None)
     wmap._x = x
     wmap._raw = raw
     return wmap, x
-
-
-def ram_image(block: bytes, fill: int = 0) -> bytes:
-    """8 KiB of cartridge RAM starting with `block`."""
-    return bytes(block) + bytes([fill]) * (0x2000 - len(block))
 
 
 # ---- text as tiles (src/tiles.h fonts) -------------------------------------

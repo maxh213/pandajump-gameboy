@@ -95,8 +95,6 @@ static uint8_t sky_tiles[4];
 static uint8_t clear_list[CLEAR_SPAN];  /* map columns with old boxes to erase */
 static uint8_t clear_n;
 
-static const uint8_t empty_column[4] = { T_SKY, T_SKY, T_SKY, T_SKY };
-
 /* What replaces the title logo (map columns 1-18, rows 2-5) when a run
    starts: sky with a big cloud at columns 3-6 and a small one at 13-15 of
    rows 3-4 (CLOUD_ROW). All 72 tiles don't fit in one VBlank, so it goes
