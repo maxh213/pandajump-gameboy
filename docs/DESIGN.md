@@ -92,7 +92,8 @@ Converted with `-map -tiles_only -keep_duplicate_tiles -noflip
 | 90–115 | Light font `A`–`Z` |
 | 116 | Light font space (same as `T_HUD_DARK`) |
 | 117–119 | Light font `!` `-` `:` |
-| 120–127 | Spare / decorations |
+| 120–122 / 123–125 | Small cloud, 24×16 (top row / bottom row), so the sky isn't one repeated cloud |
+| 126, 127 | Spare |
 
 ### `art/panda.png` — 16×16 frames in one row, 160×16 px
 

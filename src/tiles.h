@@ -25,6 +25,8 @@
 
 #define T_CLOUD_TOP    10   /* 4 tiles: 10..13 */
 #define T_CLOUD_BOT    26   /* 4 tiles: 26..29 */
+#define T_CLOUD2_TOP   120  /* small cloud, 24x16: top row 120..122 */
+#define T_CLOUD2_BOT   123  /* bottom row 123..125 */
 
 #define T_HUD_DARK     14
 
