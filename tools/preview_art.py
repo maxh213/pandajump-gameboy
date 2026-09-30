@@ -5,8 +5,8 @@ Renders every PNG in art/ with the in-game shade mapping (background:
 index = shade; sprites: 0 transparent, 1 -> shade 0, 2 -> shade 1,
 3 -> shade 3) at 4x with labels, plus mock title, game and game-over
 screens assembled from the tiles the way docs/DESIGN.md lays out the
-screen. Tile numbers come from src/tiles.h, so the mocks use the same
-names as the game code.
+screen. Tile numbers come from src/tiles.h and the text positions from
+src/config.h, so the mocks use the same names and numbers as the game code.
 
 Output: sheet_<palette>.png (every art file) and scene_<palette>.png
 (the three mock screens side by side).
@@ -49,9 +49,13 @@ def load_indices(name):
 
 
 def tile_names():
-    """The #defines in src/tiles.h, e.g. {'T_SKY': 0, ...}."""
-    text = (ROOT / "src" / "tiles.h").read_text()
-    return {m[1]: int(m[2]) for m in re.finditer(r"#define\s+(\w+)\s+(\d+)", text)}
+    """The #defines in src/tiles.h and src/config.h, e.g. {'T_SKY': 0,
+    'OVER_TEXT_Y': 44, ...}."""
+    out = {}
+    for name in ("tiles.h", "config.h"):
+        text = (ROOT / "src" / name).read_text()
+        out.update({m[1]: int(m[2]) for m in re.finditer(r"#define\s+(\w+)\s+(\d+)", text)})
+    return out
 
 
 class Canvas:
@@ -62,12 +66,13 @@ class Canvas:
         self.px = [[0] * w for _ in range(h)]
 
     def tile(self, tiles, index, tx, ty, yoff=0):
+        """A BG tile at map column tx, row ty (clipped to the screen)."""
         sx, sy = (index % 16) * 8, (index // 16) * 8
         for y in range(8):
             for x in range(8):
-                py = ty * 8 + y + yoff
-                if 0 <= py < self.h:
-                    self.px[py][tx * 8 + x] = BGP[tiles[sx + x, sy + y]]
+                px, py = tx * 8 + x, ty * 8 + y + yoff
+                if 0 <= px < self.w and 0 <= py < self.h:
+                    self.px[py][px] = BGP[tiles[sx + x, sy + y]]
 
     def sprite_tile(self, tiles, index, x0, y0):
         """A BG tile drawn as an 8x8 sprite (OBP0, colour 0 transparent), as
@@ -147,8 +152,11 @@ def box(c, tiles, t, tx, ty, variant=False):
 
 
 def game_scene(tiles, panda, t, frame=1):
-    """A mid-run screen: HUD score, a big and a small cloud, a 1-box column,
-    a double 2-box column, grass, ground, the panda, and the window HUD."""
+    """A mid-run screen: HUD score, a big and a small cloud, a 1-box column
+    the panda has just cleared and a double 2-box column coming in, as far
+    apart as the game puts them (SPACING_MIN tiles start to start; no two
+    obstacles are ever closer), grass, ground, the panda, and the window
+    HUD."""
     c = Canvas()
     for tx, ch in enumerate(text_tiles(t, "12")):
         c.tile(tiles, ch, 1 + tx, 1)
@@ -156,8 +164,10 @@ def game_scene(tiles, panda, t, frame=1):
     # content, here by 2 px.
     cloud(c, tiles, t, 2, 3, yoff=-2)
     cloud(c, tiles, t, 12, 3, yoff=-2, small=True)
-    box(c, tiles, t, 9, 12)
-    for tx in (14, 16):                    # double column, 2 boxes high
+    first = 2                              # the 1-box column just cleared
+    box(c, tiles, t, first, 12)
+    nxt = first + t["SPACING_MIN"]
+    for tx in (nxt, nxt + 2):              # double column, 2 boxes high
         box(c, tiles, t, tx, 10, variant=True)
         box(c, tiles, t, tx, 12)
     ground(c, tiles, t)
@@ -190,17 +200,17 @@ def title_scene(tiles, logo, panda, t):
 
 def game_over_scene(tiles, panda, fx, t):
     """The end of a run as src/main.c and src/hud.c draw it, once the dead
-    panda has sunk out of sight: GAME OVER in sprite text at y = 40 (the sky
-    band's plain bottom row, under the clouds), the score as BG text in map
-    row 7 and PRESS START in sprite text at y = 72, each centred with a
-    blank line between them, over the boxes the run ended at. (The panda
-    and fx sheets are unused: nothing of the panda is left on screen.)"""
+    panda has sunk out of sight: GAME OVER in sprite text at OVER_TEXT_Y
+    (under the clouds), the score as BG text in map row OVER_SCORE_ROW and
+    PRESS START in sprite text at OVER_PROMPT_Y, centred, over the boxes
+    the run ended at. (The panda and fx sheets are unused: nothing of the
+    panda is left on screen.)"""
     c = Canvas()
     for tx, ch in enumerate(text_tiles(t, "17")):
         c.tile(tiles, ch, 1 + tx, 1)
     cloud(c, tiles, t, 5, 3, yoff=-1)
     cloud(c, tiles, t, 16, 3, yoff=-1, small=True)
-    for text, y in (("GAME OVER", 40), ("PRESS START", 72)):
+    for text, y in (("GAME OVER", t["OVER_TEXT_Y"]), ("PRESS START", t["OVER_PROMPT_Y"])):
         x = (160 - len(text) * 8) // 2
         for ch, tile in zip(text, text_tiles(t, text)):
             if ch != " ":
@@ -208,10 +218,10 @@ def game_over_scene(tiles, panda, fx, t):
             x += 8
     text = "NEW BEST! 17"
     for tx, ch in enumerate(text_tiles(t, text)):
-        c.tile(tiles, ch, (84 - len(text) * 4) // 8 + tx, 7)
+        c.tile(tiles, ch, (84 - len(text) * 4) // 8 + tx, t["OVER_SCORE_ROW"])
     box(c, tiles, t, 5, 10, variant=True)  # the 2-box column it ran into
     box(c, tiles, t, 5, 12)
-    box(c, tiles, t, 18, 12)
+    box(c, tiles, t, 5 + t["SPACING_MIN"], 12)   # the next one, coming in
     ground(c, tiles, t)
     window_hud(c, tiles, t, "HI 0017")
     return c
